@@ -20,7 +20,7 @@ http://www.cisst.org/cisst/license.txt.
 */
 
 #include <cisstStereoVision.h>
-#include <cisstOpenNI/svlFilterSourceKinect.h>
+#include <sawOpenNI/svlFilterSourceKinect.h>
 #include <cisstCommon/cmnGetChar.h>
 
 
@@ -63,4 +63,3 @@ int main()
 
     return 1;
 }
-

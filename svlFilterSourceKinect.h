@@ -26,11 +26,11 @@ http://www.cisst.org/cisst/license.txt.
 #include <cisstStereoVision/svlFilterSourceBase.h>
 
 // Always include last!
-#include <cisstStereoVision/svlExport.h>
+#include <sawOpenNI/sawOpenNIExport.h>
 
 
 // Forward declarations
-class cisstOpenNI;
+class osaOpenNI;
 
 
 class CISST_EXPORT svlFilterSourceKinect : public svlFilterSourceBase
@@ -52,7 +52,7 @@ protected:
 private:
     svlSampleImageRGB* OutputRGB;
     svlSampleImageMono16* OutputDepth;
-    cisstOpenNI* Kinect;
+    osaOpenNI* Kinect;
 };
 
 CMN_DECLARE_SERVICES_INSTANTIATION_EXPORT(svlFilterSourceKinect)

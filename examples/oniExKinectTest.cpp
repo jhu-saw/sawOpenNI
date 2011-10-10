@@ -20,49 +20,57 @@ http://www.cisst.org/cisst/license.txt.
 
 */
 
-#include <cisstOpenNI/cisstOpenNI.h>
+#include <sawOpenNI/osaOpenNI.h>
+#include <cisstCommon/cmnLogger.h>
 #include <cisstCommon/cmnGetChar.h>
+#include <cisstVector/vctDynamicMatrix.h>
 #include <cisstOSAbstraction/osaSleep.h>
 
 #ifdef _WIN32
 #define SAMPLE_CONFIG_PATH "C:/dev/OpenNI/data/SamplesConfig.xml"
 #endif
-#ifdef __APPLE__ 
+#ifdef __APPLE__
 #define SAMPLE_CONFIG_PATH "/Users/vagvoba/Code/Kinect/avin2-SensorKinect-2d13967/OpenNI/Data/SamplesConfig.xml"
 #endif
 #ifdef linux // This is defined by gcc
 #define SAMPLE_CONFIG_PATH "/etc/openni/SamplesConfig.xml"
 #endif
 
-int main( int argc, char** argv ){
-  
-	cmnLogger::SetMask( CMN_LOG_ALLOW_ALL );
-	cmnLogger::SetMaskFunction( CMN_LOG_ALLOW_ALL );
-	cmnLogger::SetMaskDefaultLog( CMN_LOG_ALLOW_ALL );
-    
+int main(int argc, char** argv){
+
+	cmnLogger::SetMask(CMN_LOG_ALLOW_ALL);
+	cmnLogger::SetMaskFunction(CMN_LOG_ALLOW_ALL);
+	cmnLogger::SetMaskDefaultLog(CMN_LOG_ALLOW_ALL);
+
     int numusers = 0;
-    if( argc == 2 ){ sscanf( argv[1], "%d", &numusers ); }
+    if (argc == 2) {
+        sscanf(argv[1], "%d", &numusers);
+    }
 
-	cisstOpenNI kinect( numusers );
-    kinect.Configure( SAMPLE_CONFIG_PATH );
-    if( 0 < numusers ){ kinect.InitSkeletons(); }
+	osaOpenNI kinect(numusers);
+    kinect.Configure(SAMPLE_CONFIG_PATH);
+    if (0 < numusers) {
+        kinect.InitSkeletons();
+    }
 
-	while( true ){
-        
+	while (true) {
         // Wait and Update All
-        kinect.Update( WAIT_AND_UPDATE_ALL );
-        if( 0 < numusers ){ kinect.UpdateUserSkeletons(); }
+        kinect.Update(WAIT_AND_UPDATE_ALL);
+        if (0 < numusers) {
+            kinect.UpdateUserSkeletons();
+        }
 
         {
             vctDynamicMatrix<unsigned char> rgb;
-            if( kinect.GetRGBImage( rgb ) != cisstOpenNI::ESUCCESS ){
+            if (kinect.GetRGBImage(rgb) != osaOpenNI::ESUCCESS) {
                 CMN_LOG_RUN_ERROR << "Failed to get RGB image" << std::endl;
                 return -1;
             }
-            std::ofstream ofs( "rgb" );
-            for( size_t r=0; r<rgb.rows(); r++ ){
-                for( size_t c=0; c<rgb.cols(); c++ )
-                    { ofs << (int)rgb[r][c] << " "; }
+            std::ofstream ofs("rgb");
+            for (size_t r=0; r<rgb.rows(); r++) {
+                for (size_t c=0; c<rgb.cols(); c++) {
+                    ofs << (int)rgb[r][c] << " ";
+                }
                 ofs << std::endl;
             }
             ofs.close();
@@ -70,30 +78,30 @@ int main( int argc, char** argv ){
 
         {
             vctDynamicMatrix<double> depth;
-            if( kinect.GetDepthImageRaw( depth ) != cisstOpenNI::ESUCCESS ){
+            if (kinect.GetDepthImageRaw(depth) != osaOpenNI::ESUCCESS) {
                 CMN_LOG_RUN_ERROR << "Failed to get RGB image" << std::endl;
                 return -1;
             }
-            std::ofstream ofs( "depth" );
+            std::ofstream ofs("depth");
             ofs << depth;
             ofs.close();
         }
-            
+
         {
             vctDynamicMatrix<double> range;
             std::vector< vctFixedSizeVector<unsigned short, 2> > pixels;
-            if( kinect.GetRangeData(range, pixels) != cisstOpenNI::ESUCCESS ){
+            if (kinect.GetRangeData(range, pixels) != osaOpenNI::ESUCCESS) {
                 CMN_LOG_RUN_ERROR << "Failed to get RGB image" << std::endl;
                 return -1;
             }
-            std::ofstream ofs( "range" );
+            std::ofstream ofs("range");
             ofs << range;
             ofs.close();
         }
-            
-        if( 0 < numusers )
-            { std::vector<cisstOpenNISkeleton*> skeletons = kinect.UpdateAndGetUserSkeletons(); }
 
+        if (0 < numusers) {
+            std::vector<osaOpenNISkeleton*> skeletons = kinect.UpdateAndGetUserSkeletons();
+        }
         std::cerr << "*";
 	}
 

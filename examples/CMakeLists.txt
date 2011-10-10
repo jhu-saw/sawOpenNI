@@ -11,65 +11,39 @@
 #
 # --- end cisst license ---
 
+set (REQUIRED_CISST_LIBRARIES cisstCommon
+                              cisstVector
+                              cisstOSAbstraction
+                              cisstMultiTask
+                              cisstStereoVision)
 
-############################
-# OPENNI - KINECT EXAMPLES #
-############################
 
 # find cisst with all available libraries
-find_package (cisst REQUIRED)
+find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES})
 
 if (cisst_FOUND)
 
-    # load cisst configuration
-    include (${CISST_USE_FILE})
+  # load cisst configuration
+  include (${CISST_USE_FILE})
 
-    find_package (cisstOpenNI REQUIRED HINTS "${CISST_BINARY_DIR}/components")
+  find_package (sawOpenNI REQUIRED HINTS "${CISST_BINARY_DIR}/saw/components")
 
-    if (cisstOpenNI_FOUND)
+  if (sawOpenNI_FOUND)
 
-        include_directories (${cisstOpenNI_INCLUDE_DIR})
-        link_directories (${cisstOpenNI_LIBRARY_DIR})
+    include_directories (${sawOpenNI_INCLUDE_DIR})
+    link_directories (${sawOpenNI_LIBRARY_DIR})
 
-        #####################
-        # CISST KINECT TEST #
-        #####################
+    # example without cisstStereoVision
+    add_executable (oniExKinectTest oniExKinectTest.cpp)
+    target_link_libraries (oniExKinectTest sawOpenNI ${OPENNI_LIBRARIES})
+    cisst_target_link_libraries (oniExKinectTest cisstCommon cisstVector cisstOSAbstraction)
 
-        add_executable (oniExKinectTest
-                        oniExKinectTest.cpp
-                        )
+    # example with cisstStereoVision
+    add_executable (oniExKinectView oniExKinectView.cpp)
+    target_link_libraries (oniExKinectView sawOpenNI ${OPENNI_LIBRARIES})
+    cisst_target_link_libraries (oniExKinectView ${REQUIRED_CISST_LIBRARIES})
 
-        target_link_libraries (oniExKinectTest
-                               cisstOpenNI
-                               )
-
-        cisst_target_link_libraries (oniExKinectTest
-                                     cisstCommon
-                                     cisstVector
-                                     cisstOSAbstraction
-                                     )
-
-        ###################
-        # SVL KINECT TEST #
-        ###################
-
-        add_executable (oniExKinectView
-                        oniExKinectView.cpp
-                        )
-
-        target_link_libraries (oniExKinectView
-                               cisstOpenNI
-                               )
-
-        cisst_target_link_libraries (oniExKinectView
-                                     cisstCommon
-                                     cisstVector
-                                     cisstOSAbstraction
-                                     cisstMultiTask
-                                     cisstStereoVision
-                                     )
-
-    endif (cisstOpenNI_FOUND)
+  endif (sawOpenNI_FOUND)
 
 endif (cisst_FOUND)
 

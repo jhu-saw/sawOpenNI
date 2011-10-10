@@ -20,10 +20,10 @@ http://www.cisst.org/cisst/license.txt.
 
 */
 
-#include <cisstOpenNI/svlFilterSourceKinect.h>
+#include <sawOpenNI/svlFilterSourceKinect.h>
 #include <cisstStereoVision/svlFilterOutput.h>
 #include <cisstStereoVision/svlImageProcessing.h>
-#include <cisstOpenNI/cisstOpenNI.h>
+#include <sawOpenNI/osaOpenNI.h>
 
 #define SAMPLE_CONFIG_PATH "/Users/vagvoba/Code/Kinect/avin2-SensorKinect-2d13967/OpenNI/Data/SamplesConfig.xml"
 
@@ -75,7 +75,7 @@ int svlFilterSourceKinect::Initialize(svlSample* &syncOutput)
 {
     if (OutputRGB == 0 || OutputDepth == 0) return SVL_FAIL;
 
-    Kinect = new cisstOpenNI(1);
+    Kinect = new osaOpenNI(1);
     Kinect->Configure(SAMPLE_CONFIG_PATH);
 
     syncOutput = OutputRGB;

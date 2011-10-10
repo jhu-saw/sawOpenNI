@@ -12,22 +12,14 @@
 #
 # --- end cisst license ---
 
+set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/code")
 
-set ( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/code/cmake/Modules )
+find_package (OpenNI REQUIRED)
 
-find_package( OpenNI REQUIRED )
-
-if( OPENNI_FOUND )
-
-  option( CISST_BUILD_COMP_cisstOpenNI "Build component OpenNI" OFF )
-
-  if( CISST_BUILD_COMP_cisstOpenNI )
-
-    include_directories ( ${CMAKE_CURRENT_BINARY_DIR} ${OPENNI_INCLUDE_DIRS} )
-
-    add_subdirectory( code )
-    add_subdirectory( examples )
-
-  endif( CISST_BUILD_COMP_cisstOpenNI )
-
-endif( OPENNI_FOUND )
+if (OPENNI_FOUND)
+  include_directories (${OPENNI_INCLUDE_DIRS})
+  add_subdirectory (code)
+  add_subdirectory (examples)
+else (OPENNI_FOUND)
+  message (SEND_ERROR "code in ${CMAKE_CURRENT_SOURCE_DIR} requires OpenNI.")
+endif (OPENNI_FOUND)

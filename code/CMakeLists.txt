@@ -12,68 +12,70 @@
 #
 # --- end cisst license ---
 
+set (REQUIRED_CISST_LIBRARIES cisstCommon
+                              cisstVector
+                              cisstOSAbstraction
+                              cisstMultiTask
+                              cisstStereoVision)
 
-set (HEADER_FILES
-     ../cisstOpenNI.h
-     ../cisstOpenNISkeleton.h
-     cisstOpenNIData.h
-     )
-set (SOURCE_FILES
-     cisstOpenNI.cpp
-     cisstOpenNISkeleton.cpp
-     cisstOpenNIData.cpp
-     )
+find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES})
 
-# SVL (cisstStereoVision) headers and sources
-set (HEADER_FILES
-     ${HEADER_FILES}
-     ../svlFilterSourceKinect.h
-     )
-set (SOURCE_FILES
-     ${SOURCE_FILES}
-     svlFilterSourceKinect.cpp
-     )
+if (cisst_FOUND_AS_REQUIRED)
 
-cisst_set_directories (cisstCommon
-                       cisstVector
-                       cisstOSAbstraction
-                       cisstMultiTask
-                       cisstStereoVision
-                       )
+  # load cisst configuration
+  include (${CISST_USE_FILE})
 
-# Finally create the library
-add_library (cisstOpenNI
-             ${HEADER_FILES}
-             ${SOURCE_FILES}
-             )
+  set (HEADER_FILES
+       ../sawOpenNIExport.h
+       ../osaOpenNI.h
+       ../osaOpenNISkeleton.h
+       osaOpenNIData.h
+       )
+  set (SOURCE_FILES
+       osaOpenNI.cpp
+       osaOpenNISkeleton.cpp
+       osaOpenNIData.cpp
+       )
 
-target_link_libraries (cisstOpenNI
-                       ${OPENNI_LIBRARIES}
-                       )
+  # SVL (cisstStereoVision) headers and sources
+  set (HEADER_FILES
+       ${HEADER_FILES}
+       ../svlFilterSourceKinect.h
+       )
+  set (SOURCE_FILES
+       ${SOURCE_FILES}
+       svlFilterSourceKinect.cpp
+       )
 
-cisst_target_link_libraries (cisstOpenNI
-                             cisstCommon
-                             cisstVector
-                             cisstOSAbstraction
-                             cisstMultiTask
-                             cisstStereoVision
-                             )
 
-set (cisstOpenNI_INCLUDE_DIR
-     "${sawComponents_SOURCE_DIR}"
-     )
+  add_library (sawOpenNI
+               ${HEADER_FILES}
+               ${SOURCE_FILES}
+               )
 
-set (cisstOpenNI_LIBRARY_DIR
-     ${LIBRARY_OUTPUT_PATH}
-     )
+  target_link_libraries (sawOpenNI
+                         ${OPENNI_LIBRARIES}
+                         )
 
-set (cisstOpenNI_LIBRARIES
-     cisstOpenNI
-     ${OPENNI_LIBRARIES}
-     )
+  cisst_target_link_libraries (sawOpenNI
+                               cisstCommon
+                               cisstVector
+                               cisstOSAbstraction
+                               cisstMultiTask
+                               cisstStereoVision
+                               )
 
-configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/cisstOpenNIConfig.cmake.in"
-                "${sawComponents_BINARY_DIR}/cisstOpenNIConfig.cmake"
-                @ONLY@
-                )
+  set (sawOpenNI_INCLUDE_DIR "${sawComponents_SOURCE_DIR}")
 
+  set (sawOpenNI_LIBRARY_DIR "${LIBRARY_OUTPUT_PATH}")
+
+  set (sawOpenNI_LIBRARIES sawOpenNI ${OPENNI_LIBRARIES})
+
+  configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/sawOpenNIConfig.cmake.in"
+                  "${sawComponents_BINARY_DIR}/sawOpenNIConfig.cmake"
+                  @ONLY@
+                  )
+
+else (cisst_FOUND_AS_REQUIRED)
+  message ("Information: code in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires ${REQUIRED_CISST_LIBRARIES}")
+endif (cisst_FOUND_AS_REQUIRED)
