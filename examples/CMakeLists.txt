@@ -38,6 +38,15 @@ if (cisst_FOUND)
     target_link_libraries (oniExKinectTest sawOpenNI ${OPENNI_LIBRARIES})
     cisst_target_link_libraries (oniExKinectTest cisstCommon cisstVector cisstOSAbstraction)
 
+    # copy the configration file to binary tree
+    add_custom_command (TARGET oniExKinectTest
+                        POST_BUILD
+                        COMMAND ${CMAKE_COMMAND}
+                        ARGS -E copy
+                             ${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                             ${EXECUTABLE_OUTPUT_PATH}/${CMAKE_CFG_INTDIR}/SamplesConfig.xml
+                        COMMENT "Copy Kinect configuration file to binary tree")
+
     # example with cisstStereoVision
     add_executable (oniExKinectView oniExKinectView.cpp)
     target_link_libraries (oniExKinectView sawOpenNI ${OPENNI_LIBRARIES})

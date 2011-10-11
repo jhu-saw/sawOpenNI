@@ -19,9 +19,10 @@ http://www.cisst.org/cisst/license.txt.
 --- end cisst license ---
 */
 
+#include <cisstCommon/cmnGetChar.h>
+#include <cisstCommon/cmnPath.h>
 #include <cisstStereoVision.h>
 #include <sawOpenNI/svlFilterSourceKinect.h>
-#include <cisstCommon/cmnGetChar.h>
 
 
 int main()
@@ -33,6 +34,16 @@ int main()
     svlFilterImageWindow window_rgb;
     svlFilterStreamTypeConverter depth2rgb(svlTypeImageMono16, svlTypeImageRGB);
     svlFilterImageWindow window_depth;
+
+    // Set Kinect configuration file
+    cmnPath path;
+    path.Add(".");
+    std::string configFile = path.Find("SamplesConfig.xml");
+    if (configFile == "") {
+        std::cerr << "can't find file \"SamplesConfig.xml\" in path: " << path << std::endl;
+        exit (-1);
+    }
+    kinect.SetKinectConfigFile(configFile);
 
     // Setup Mono16 to RGB converter
     depth2rgb.SetMono16ShiftDown(4);

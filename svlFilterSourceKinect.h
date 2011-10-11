@@ -41,6 +41,7 @@ public:
     svlFilterSourceKinect();
     virtual ~svlFilterSourceKinect();
 
+    void SetKinectConfigFile(const std::string & configFile);
     unsigned int GetWidth() const;
     unsigned int GetHeight() const;
 
@@ -53,6 +54,7 @@ private:
     svlSampleImageRGB* OutputRGB;
     svlSampleImageMono16* OutputDepth;
     osaOpenNI* Kinect;
+    std::string KinectConfigFile;
 };
 
 CMN_DECLARE_SERVICES_INSTANTIATION_EXPORT(svlFilterSourceKinect)

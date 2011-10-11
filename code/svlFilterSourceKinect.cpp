@@ -25,8 +25,6 @@ http://www.cisst.org/cisst/license.txt.
 #include <cisstStereoVision/svlImageProcessing.h>
 #include <sawOpenNI/osaOpenNI.h>
 
-#define SAMPLE_CONFIG_PATH "/Users/vagvoba/Code/Kinect/avin2-SensorKinect-2d13967/OpenNI/Data/SamplesConfig.xml"
-
 
 /***********************************/
 /*** svlFilterSourceKinect class ***/
@@ -38,7 +36,8 @@ svlFilterSourceKinect::svlFilterSourceKinect() :
     svlFilterSourceBase(),
     OutputRGB(0),
     OutputDepth(0),
-    Kinect(0)
+    Kinect(0),
+    KinectConfigFile("")
 {
     AddOutput("rgb", true);
     SetOutputType("rgb", svlTypeImageRGB);
@@ -61,6 +60,11 @@ svlFilterSourceKinect::~svlFilterSourceKinect()
     if (OutputDepth) delete OutputDepth;
 }
 
+void svlFilterSourceKinect::SetKinectConfigFile(const std::string & configFile)
+{
+    this->KinectConfigFile = configFile;
+}
+
 unsigned int svlFilterSourceKinect::GetWidth() const
 {
     return OutputRGB->GetWidth();
@@ -76,7 +80,11 @@ int svlFilterSourceKinect::Initialize(svlSample* &syncOutput)
     if (OutputRGB == 0 || OutputDepth == 0) return SVL_FAIL;
 
     Kinect = new osaOpenNI(1);
-    Kinect->Configure(SAMPLE_CONFIG_PATH);
+    if (this->KinectConfigFile != "") {
+        Kinect->Configure(this->KinectConfigFile);
+    } else {
+        CMN_LOG_CLASS_INIT_ERROR << "Initialize: Kinect configuration file not set!" << std::endl;
+    }
 
     syncOutput = OutputRGB;
 

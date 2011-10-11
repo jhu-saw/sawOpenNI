@@ -23,18 +23,9 @@ http://www.cisst.org/cisst/license.txt.
 #include <sawOpenNI/osaOpenNI.h>
 #include <cisstCommon/cmnLogger.h>
 #include <cisstCommon/cmnGetChar.h>
+#include <cisstCommon/cmnPath.h>
 #include <cisstVector/vctDynamicMatrix.h>
 #include <cisstOSAbstraction/osaSleep.h>
-
-#ifdef _WIN32
-#define SAMPLE_CONFIG_PATH "C:/dev/OpenNI/data/SamplesConfig.xml"
-#endif
-#ifdef __APPLE__
-#define SAMPLE_CONFIG_PATH "/Users/vagvoba/Code/Kinect/avin2-SensorKinect-2d13967/OpenNI/Data/SamplesConfig.xml"
-#endif
-#ifdef linux // This is defined by gcc
-#define SAMPLE_CONFIG_PATH "/etc/openni/SamplesConfig.xml"
-#endif
 
 int main(int argc, char** argv){
 
@@ -47,8 +38,16 @@ int main(int argc, char** argv){
         sscanf(argv[1], "%d", &numusers);
     }
 
+
+    cmnPath path;
+    path.Add(".");
+    std::string configFile = path.Find("SamplesConfig.xml");
+    if (configFile == "") {
+        std::cerr << "can't find file \"SamplesConfig.xml\" in path: " << path << std::endl;
+        exit (-1);
+    }
 	osaOpenNI kinect(numusers);
-    kinect.Configure(SAMPLE_CONFIG_PATH);
+    kinect.Configure(configFile);
     if (0 < numusers) {
         kinect.InitSkeletons();
     }
