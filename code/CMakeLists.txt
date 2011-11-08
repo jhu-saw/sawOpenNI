@@ -18,9 +18,9 @@ set (REQUIRED_CISST_LIBRARIES cisstCommon
                               cisstMultiTask
                               cisstStereoVision)
 
-find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES})
+find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES} QUIET)
 
-if (cisst_FOUND_AS_REQUIRED)
+if (cisst_FOUND)
 
   # load cisst configuration
   include (${CISST_USE_FILE})
@@ -37,15 +37,18 @@ if (cisst_FOUND_AS_REQUIRED)
        osaOpenNIData.cpp
        )
 
-  # SVL (cisstStereoVision) headers and sources
-  set (HEADER_FILES
-       ${HEADER_FILES}
-       ../svlFilterSourceKinect.h
-       )
-  set (SOURCE_FILES
-       ${SOURCE_FILES}
-       svlFilterSourceKinect.cpp
-       )
+  if (CISST_cisstStereoVision)
+    set (HEADER_FILES
+         ${HEADER_FILES}
+         ../svlFilterSourceKinect.h
+         )
+    set (SOURCE_FILES
+         ${SOURCE_FILES}
+         svlFilterSourceKinect.cpp
+         )
+  else (CISST_cisstStereoVision)
+    message ("Information: code svlFilterSourceKinect in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires cisstStereoVision")
+  endif (CISST_cisstStereoVision)
 
 
   add_library (sawOpenNI
@@ -57,18 +60,14 @@ if (cisst_FOUND_AS_REQUIRED)
                          ${OPENNI_LIBRARIES}
                          )
 
-  cisst_target_link_libraries (sawOpenNI
-                               cisstCommon
-                               cisstVector
-                               cisstOSAbstraction
-                               cisstMultiTask
-                               cisstStereoVision
-                               )
+  if (CISST_cisstStereoVision)
+    cisst_target_link_libraries (sawOpenNI ${REQUIRED_CISST_LIBRARIES})
+  else (CISST_cisstStereoVision)
+    cisst_target_link_libraries (sawOpenNI cisstCommon cisstVector cisstOSAbstraction)
+  endif (CISST_cisstStereoVision)
 
   set (sawOpenNI_INCLUDE_DIR "${sawComponents_SOURCE_DIR}")
-
   set (sawOpenNI_LIBRARY_DIR "${LIBRARY_OUTPUT_PATH}")
-
   set (sawOpenNI_LIBRARIES sawOpenNI ${OPENNI_LIBRARIES})
 
   configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/sawOpenNIConfig.cmake.in"
@@ -76,6 +75,6 @@ if (cisst_FOUND_AS_REQUIRED)
                   @ONLY@
                   )
 
-else (cisst_FOUND_AS_REQUIRED)
+else (cisst_FOUND)
   message ("Information: code in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires ${REQUIRED_CISST_LIBRARIES}")
-endif (cisst_FOUND_AS_REQUIRED)
+endif (cisst_FOUND)

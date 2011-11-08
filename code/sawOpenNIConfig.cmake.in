@@ -14,3 +14,4 @@
 set (sawOpenNI_INCLUDE_DIR "@sawOpenNI_INCLUDE_DIR@")
 set (sawOpenNI_LIBRARY_DIR "@sawOpenNI_LIBRARY_DIR@")
 set (sawOpenNI_LIBRARIES   "@sawOpenNI_LIBRARIES@")
+set (sawOpenNI_HAS_SVL     "@CISST_cisstStereoVision@")

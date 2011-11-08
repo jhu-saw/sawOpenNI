@@ -17,9 +17,8 @@ set (REQUIRED_CISST_LIBRARIES cisstCommon
                               cisstMultiTask
                               cisstStereoVision)
 
-
 # find cisst with all available libraries
-find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES})
+find_package (cisst REQUIRED ${REQUIRED_CISST_LIBRARIES} QUIET)
 
 if (cisst_FOUND)
 
@@ -48,10 +47,16 @@ if (cisst_FOUND)
                         COMMENT "Copy Kinect configuration file to binary tree")
 
     # example with cisstStereoVision
-    add_executable (oniExKinectView oniExKinectView.cpp)
-    target_link_libraries (oniExKinectView sawOpenNI ${OPENNI_LIBRARIES})
-    cisst_target_link_libraries (oniExKinectView ${REQUIRED_CISST_LIBRARIES})
+    if (sawOpenNI_HAS_SVL)
+      add_executable (oniExKinectView oniExKinectView.cpp)
+      target_link_libraries (oniExKinectView sawOpenNI ${OPENNI_LIBRARIES})
+      cisst_target_link_libraries (oniExKinectView ${REQUIRED_CISST_LIBRARIES})
+    else (sawOpenNI_HAS_SVL)
+      message ("Information: example oniExKinectView in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires cisstStereoVision")
+    endif (sawOpenNI_HAS_SVL)
 
+  else (sawOpenNI_FOUND)
+    message ("Information: code in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires OpenNI")
   endif (sawOpenNI_FOUND)
 
 endif (cisst_FOUND)
