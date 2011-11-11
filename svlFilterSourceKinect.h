@@ -30,6 +30,7 @@ http://www.cisst.org/cisst/license.txt.
 
 
 // Forward declarations
+class svlFilterOutput;
 class osaOpenNI;
 
 
@@ -44,6 +45,7 @@ public:
     void SetKinectConfigFile(const std::string & configFile);
     unsigned int GetWidth() const;
     unsigned int GetHeight() const;
+    osaOpenNI* GetKinect();
 
 protected:
     virtual int Initialize(svlSample* &syncOutput);
@@ -51,8 +53,11 @@ protected:
     virtual int Release();
 
 private:
-    svlSampleImageRGB* OutputRGB;
-    svlSampleImageMono16* OutputDepth;
+    svlFilterOutput* DepthOutput;
+    svlFilterOutput* PointCloudOutput;
+    svlSampleImageRGB*    RGBSample;
+    svlSampleImageMono16* DepthSample;
+    svlSampleImage3DMap*  PointCloudSample;
     osaOpenNI* Kinect;
     std::string KinectConfigFile;
 };

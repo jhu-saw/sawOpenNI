@@ -78,6 +78,9 @@ class CISST_EXPORT osaOpenNI {
     char userCalibDataPath;
     bool usingPrecapturedCalibration;
 
+    char* ProjectivePointsBuffer;
+    char* WorldPointsBuffer;
+    unsigned int PointsBufferSize;
 
  public:
 
@@ -120,6 +123,7 @@ class CISST_EXPORT osaOpenNI {
     */
     osaOpenNI::Errno GetRangeData(vctDynamicMatrix<double> & rangedata,
                                   const std::vector< vctFixedSizeVector<unsigned short, 2> > & pixels);
+    osaOpenNI::Errno GetRangeData(vctDynamicMatrixRef<vctFloat3> rangedata);
 
     //! Get Raw Depth Image
     /**
@@ -170,6 +174,7 @@ class CISST_EXPORT osaOpenNI {
     osaOpenNI::Errno
         Convert3DToProjectiveMask(const vctDynamicMatrix<double> & rangedata,
                                   vctDynamicMatrix<bool> & mask);
+    void Convert3DToProjective(const vctFloat3& point3d, vctFloat3& point2d);
 
 };
 

@@ -27,7 +27,10 @@ http://www.cisst.org/cisst/license.txt.
 #include "osaOpenNIData.h"
 
 
-osaOpenNI::osaOpenNI(int numUsers)
+osaOpenNI::osaOpenNI(int numUsers) :
+    ProjectivePointsBuffer(0),
+    WorldPointsBuffer(0),
+    PointsBufferSize(0)
 {
     this->Data = new osaOpenNIData;
     this->Data->SetStates();
@@ -36,7 +39,10 @@ osaOpenNI::osaOpenNI(int numUsers)
 }
 
 
-osaOpenNI::osaOpenNI(int numUsers, char usrPath)
+osaOpenNI::osaOpenNI(int numUsers, char usrPath) :
+    ProjectivePointsBuffer(0),
+    WorldPointsBuffer(0),
+    PointsBufferSize(0)
 {
     this->Data = new osaOpenNIData;
     this->Data->SetStates();
@@ -49,9 +55,9 @@ osaOpenNI::osaOpenNI(int numUsers, char usrPath)
 
 osaOpenNI::~osaOpenNI()
 {
-    if (this->Data) {
-        delete this->Data;
-    }
+    if (this->Data)             delete this->Data;
+    if (ProjectivePointsBuffer) delete ProjectivePointsBuffer;
+    if (WorldPointsBuffer)      delete WorldPointsBuffer;
 }
 
 
@@ -340,6 +346,66 @@ osaOpenNI::GetRangeData(vctDynamicMatrix<double>& rangedata,
     return osaOpenNI::ESUCCESS;
 }
 
+osaOpenNI::Errno osaOpenNI::GetRangeData(vctDynamicMatrixRef<vctFloat3> rangedata)
+{
+    // Get data
+    xn::DepthMetaData depthMD;
+    Data->depthgenerator.GetMetaData(depthMD);
+
+    const unsigned int width  = depthMD.XRes();
+    const unsigned int height = depthMD.YRes();
+
+    // check image size
+    if (rangedata.cols() != width ||
+        rangedata.rows() != height) {
+        CMN_LOG_RUN_ERROR << "cisstOpenNI::GetRangeData - data size mismatch" << std::endl;
+        return osaOpenNI::EFAILURE;
+    }
+
+    // update buffer size if needed
+    const unsigned int size = width * height;
+    if (PointsBufferSize < size) {
+        if (ProjectivePointsBuffer) delete ProjectivePointsBuffer;
+        if (WorldPointsBuffer)      delete WorldPointsBuffer;
+        ProjectivePointsBuffer = new char[size * sizeof(XnPoint3D)];
+        WorldPointsBuffer      = new char[size * sizeof(XnPoint3D)];
+        if (!ProjectivePointsBuffer || !WorldPointsBuffer) {
+            CMN_LOG_RUN_ERROR << "cisstOpenNI::GetRangeData - failed to allocate data buffer" << std::endl;
+            return osaOpenNI::EFAILURE;
+        }
+    }
+
+    XnPoint3D* proj = reinterpret_cast<XnPoint3D*>(ProjectivePointsBuffer);
+    XnPoint3D* wrld = reinterpret_cast<XnPoint3D*>(WorldPointsBuffer);
+
+    // create projective coordinates
+    unsigned int i, x, y;
+    for(i = 0, x = 0; x < width; x ++) {
+        for(y = 0; y < height; i ++, y ++) {
+            proj[i].X = static_cast<XnFloat>(x);
+            proj[i].Y = static_cast<XnFloat>(y);
+            proj[i].Z = static_cast<XnFloat>(depthMD(x, y));
+        }
+    }
+
+    // convert projective to 3D
+    XnStatus status = Data->depthgenerator.ConvertProjectiveToRealWorld(size, proj, wrld);
+    if (status != XN_STATUS_OK) {
+        CMN_LOG_RUN_ERROR << "cisstOpenNI::GetRangeData - failed to convert projective to world: "
+                          << xnGetStatusString( status ) << std::endl;
+    }
+
+    for (i = 0, x = 0; x < width; x ++) {
+        for (y = 0; y < height; i ++, y ++) {
+            rangedata.Element(y, x).Assign(-wrld[i].X / 1000.0,
+                                            wrld[i].Y / 1000.0,
+                                            wrld[i].Z / 1000.0);
+        }
+    }
+
+    return osaOpenNI::ESUCCESS;
+}
+
 std::vector<osaOpenNISkeleton*> &osaOpenNI::UpdateAndGetUserSkeletons() {
 
     // Initialize Users
@@ -427,6 +493,11 @@ osaOpenNI::Convert3DToProjectiveMask(const vctDynamicMatrix<double>& rangedata,
     delete[] proj;
 
     return osaOpenNI::ESUCCESS;
+}
+
+void osaOpenNI::Convert3DToProjective(const vctFloat3& point3d, vctFloat3& point2d)
+{
+    Data->depthgenerator.ConvertRealWorldToProjective(1, (XnPoint3D*)(point3d.Pointer()), (XnPoint3D*)(point2d.Pointer()));
 }
 
 

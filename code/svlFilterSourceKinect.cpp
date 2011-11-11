@@ -34,87 +34,106 @@ CMN_IMPLEMENT_SERVICES_DERIVED(svlFilterSourceKinect, svlFilterSourceBase)
 
 svlFilterSourceKinect::svlFilterSourceKinect() :
     svlFilterSourceBase(),
-    OutputRGB(0),
-    OutputDepth(0),
-    Kinect(0),
-    KinectConfigFile("")
+    Kinect(0)
 {
     AddOutput("rgb", true);
     SetOutputType("rgb", svlTypeImageRGB);
 
-    AddOutput("depth", false);
+    DepthOutput = AddOutput("depth", false);
     SetOutputType("depth", svlTypeImageMono16);
+
+    PointCloudOutput = AddOutput("pointcloud", false);
+    SetOutputType("pointcloud", svlTypeImage3DMap);
 
     const unsigned int width  = 640;
     const unsigned int height = 480;
 
-    OutputRGB = new svlSampleImageRGB;
-    OutputRGB->SetSize(width, height);
-    OutputDepth = new svlSampleImageMono16;
-    OutputDepth->SetSize(width, height);
+    RGBSample        = new svlSampleImageRGB;
+    DepthSample      = new svlSampleImageMono16;
+    PointCloudSample = new svlSampleImage3DMap;
+    RGBSample->SetSize(width, height);
+    DepthSample->SetSize(width, height);
+    PointCloudSample->SetSize(width, height);
 }
 
 svlFilterSourceKinect::~svlFilterSourceKinect()
 {
-    if (OutputRGB) delete OutputRGB;
-    if (OutputDepth) delete OutputDepth;
+    Release();
+
+    if (RGBSample)        delete RGBSample;
+    if (DepthSample)      delete DepthSample;
+    if (PointCloudSample) delete PointCloudSample;
 }
 
 void svlFilterSourceKinect::SetKinectConfigFile(const std::string & configFile)
 {
-    this->KinectConfigFile = configFile;
+    KinectConfigFile = configFile;
 }
 
 unsigned int svlFilterSourceKinect::GetWidth() const
 {
-    return OutputRGB->GetWidth();
+    return RGBSample->GetWidth();
 }
 
 unsigned int svlFilterSourceKinect::GetHeight() const
 {
-    return OutputRGB->GetHeight();
+    return RGBSample->GetHeight();
+}
+
+osaOpenNI* svlFilterSourceKinect::GetKinect()
+{
+    return Kinect;
 }
 
 int svlFilterSourceKinect::Initialize(svlSample* &syncOutput)
 {
-    if (OutputRGB == 0 || OutputDepth == 0) return SVL_FAIL;
+    if (!DepthOutput || !PointCloudOutput ||
+        !RGBSample || !DepthSample || !PointCloudSample) return SVL_FAIL;
 
     Kinect = new osaOpenNI(1);
-    if (this->KinectConfigFile != "") {
-        Kinect->Configure(this->KinectConfigFile);
+    if (!KinectConfigFile.empty()) {
+        Kinect->Configure(KinectConfigFile);
     } else {
         CMN_LOG_CLASS_INIT_ERROR << "Initialize: Kinect configuration file not set!" << std::endl;
+        Release();
+        return SVL_FAIL;
     }
 
-    syncOutput = OutputRGB;
+    syncOutput = RGBSample;
 
-    svlFilterOutput* output = GetOutput("depth");
-    if (!output) return SVL_FAIL;
-    output->SetupSample(OutputDepth);
+    DepthOutput->SetupSample(DepthSample);
+    PointCloudOutput->SetupSample(PointCloudSample);
 
     return SVL_OK;
 }
 
 int svlFilterSourceKinect::Process(svlProcInfo* procInfo, svlSample* &syncOutput)
 {
-    syncOutput = OutputRGB;
+    syncOutput = RGBSample;
 
     _OnSingleThread(procInfo)
     {
         Kinect->Update(WAIT_AND_UPDATE_ALL);
 
         // Acquire color and depth images
-        Kinect->GetRGBImage(OutputRGB->GetMatrixRef());
-        Kinect->GetDepthImageRaw(OutputDepth->GetMatrixRef());
+        Kinect->GetRGBImage(RGBSample->GetMatrixRef());
+        Kinect->GetDepthImageRaw(DepthSample->GetMatrixRef());
+
+        vctDynamicMatrixRef<vctFloat3> pointcloud(GetHeight(), GetWidth(), // rows, columns
+                                                  GetWidth(), 1,           // rowstride, columnstride
+                                                  reinterpret_cast<vctFloat3*>(PointCloudSample->GetPointer()));
+        Kinect->GetRangeData(pointcloud);
 
         // Post-process captured data
-        svlImageProcessing::SwapColorChannels(OutputRGB, 0, OutputRGB, 0);
+        svlImageProcessing::SwapColorChannels(RGBSample, 0, RGBSample, 0);
 
         // Push depth image to async output
-        svlFilterOutput* output = GetOutput("depth");
-        if (!output) return SVL_FAIL;
-        OutputDepth->SetTimestamp(OutputRGB->GetTimestamp());
-        output->PushSample(OutputDepth);
+        DepthSample->SetTimestamp(RGBSample->GetTimestamp());
+        DepthOutput->PushSample(DepthSample);
+
+        // Push point cloud to async output
+        PointCloudSample->SetTimestamp(RGBSample->GetTimestamp());
+        PointCloudOutput->PushSample(PointCloudSample);
     }
 
     return SVL_OK;
