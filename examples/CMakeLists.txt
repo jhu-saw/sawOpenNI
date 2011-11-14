@@ -25,7 +25,7 @@ if (cisst_FOUND)
   # load cisst configuration
   include (${CISST_USE_FILE})
 
-  find_package (sawOpenNI REQUIRED HINTS "${CISST_BINARY_DIR}/saw/components")
+  find_package (sawOpenNI REQUIRED HINTS "${cisst_saw_BINARY_DIR}/saw/components")
 
   if (sawOpenNI_FOUND)
 
