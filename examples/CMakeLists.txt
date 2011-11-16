@@ -32,6 +32,27 @@ if (cisst_FOUND)
     include_directories (${sawOpenNI_INCLUDE_DIR})
     link_directories (${sawOpenNI_LIBRARY_DIR})
 
+    # Copy OpenNI Kinect XML config file to the build tree
+    if (XCODE_VERSION OR MSVC)
+      # Debug
+      configure_file (${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                      ${EXECUTABLE_OUTPUT_PATH}/Debug/SamplesConfig.xml COPYONLY)
+      # Release
+      configure_file (${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                      ${EXECUTABLE_OUTPUT_PATH}/Release/SamplesConfig.xml COPYONLY)
+      if (MSVC)
+        # Release with Debug Info
+        configure_file (${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                        ${EXECUTABLE_OUTPUT_PATH}/RelWithDebInfo/SamplesConfig.xml COPYONLY)
+        # Default MSVC debug directory (when launching program from within MSVC)
+        configure_file (${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                        ${CMAKE_CURRENT_BINARY_DIR}/SamplesConfig.xml COPYONLY)
+      endif (MSVC)
+    else (XCODE_VERSION OR MSVC)
+      configure_file (${CMAKE_CURRENT_SOURCE_DIR}/SamplesConfig.xml
+                      ${EXECUTABLE_OUTPUT_PATH}/SamplesConfig.xml COPYONLY)
+    endif (XCODE_VERSION OR MSVC)
+
     # example without cisstStereoVision
     add_executable (oniExKinectTest oniExKinectTest.cpp)
     target_link_libraries (oniExKinectTest sawOpenNI ${OPENNI_LIBRARIES})

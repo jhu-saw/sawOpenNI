@@ -25,6 +25,7 @@ http://www.cisst.org/cisst/license.txt.
 #include <cisstStereoVision/svlFilterInput.h>
 #include <cisstStereoVision/svlFilterOutput.h>
 #include <cisstCommon/cmnGetChar.h>
+#include <cisstCommon/cmnPath.h>
 
 #include "planefit.h"
 
@@ -45,16 +46,8 @@ public:
         AddOutput("rgb", true);
         SetOutputType("rgb", svlTypeImageRGB);
 
-        DepthInput = AddInput("depth", false);
-        AddInputType("depth", svlTypeImageMono16);
-        DepthOutput = AddOutput("depth", false);
-        SetOutputType("depth", svlTypeImageMono16);
-
         PointCloudInput = AddInput("pointcloud", false);
         AddInputType("pointcloud", svlTypeImage3DMap);
-
-        SegmentsInput = AddInput("segments", false);
-        AddInputType("segments", svlTypeBlobs);
 
         LabelsSample = new svlSampleImageMono8;
 
@@ -117,16 +110,12 @@ protected:
     {
         syncOutput = syncInput;
 
-        // Setup depth output with sample prototype
-        svlSampleImageMono16 depth_sample;
-        depth_sample.SetSize(syncInput);
-        DepthOutput->SetupSample(&depth_sample);
-
         // Setup labels output with sample prototype
         LabelsSample->SetSize(syncInput);
 
-        GradX.SetSize(depth_sample.GetHeight(), depth_sample.GetWidth());
-        GradY.SetSize(depth_sample.GetHeight(), depth_sample.GetWidth());
+        svlSampleImageRGB* rgb = dynamic_cast<svlSampleImageRGB*>(syncInput);
+        GradX.SetSize(rgb->GetHeight(), rgb->GetWidth());
+        GradY.SetSize(rgb->GetHeight(), rgb->GetWidth());
 
         Blobs->SetChannelCount(1);
         Blobs->SetBufferSize(1000);
@@ -149,10 +138,6 @@ protected:
 
         _OnSingleThread(procInfo)
         {
-            // Pull depth image from async input
-            svlSampleImageMono16* depth_sample = dynamic_cast<svlSampleImageMono16*>(DepthInput->PullSample(true));
-            if (!depth_sample) return SVL_FAIL;
-
             // Pull point cloud from async input
             svlSampleImage3DMap* pointcloud_sample = dynamic_cast<svlSampleImage3DMap*>(PointCloudInput->PullSample(true));
             if (!pointcloud_sample) return SVL_FAIL;
@@ -192,7 +177,6 @@ protected:
             PlaneDistances->SetTimestamp(syncInput->GetTimestamp());
             PlaneObjects->SetTimestamp(syncInput->GetTimestamp());
 
-            DepthOutput->PushSample(depth_sample);
             PlaneDistancesOutput->PushSample(PlaneDistances);
             PlaneObjectsOutput->PushSample(PlaneObjects);
         }
@@ -572,14 +556,11 @@ public:
     unsigned int MinObjectArea;
 
 private:
-    svlFilterInput* DepthInput;
-    svlFilterOutput* DepthOutput;
     svlFilterInput* PointCloudInput;
     svlSampleImageMono8* LabelsSample;
     svlSampleImageMono8* HistogramImage;
     svlSampleImageMono32* HistogramLabels;
     svlSampleBlobs* HistogramBlobs;
-    svlFilterInput* SegmentsInput;
     vctDynamicMatrix<short> GradX, GradY;
     unsigned int Radius;
 
@@ -622,7 +603,15 @@ int main()
 
     svlFilterKinectGradientLabeler gradient_labeler;
 
-    kinect.SetKinectConfigFile("/Users/vagvoba/Code/cisst/source/trunk/saw/components/sawOpenNI/examples/SamplesConfig.xml");
+    // Set Kinect configuration file
+    cmnPath path;
+    path.Add(".");
+    std::string configFile = path.Find("SamplesConfig.xml");
+    if (configFile == "") {
+        std::cerr << "can't find file \"SamplesConfig.xml\" in path: " << path << std::endl;
+        exit (-1);
+    }
+    kinect.SetKinectConfigFile(configFile);
 
     // Setup Mono16 to RGB converter
     to_rgb1.SetMono16ShiftDown(4);
@@ -643,11 +632,10 @@ int main()
     stream.SetSourceFilter(&kinect);
 
     kinect.GetOutput("rgb")->Connect(gradient_labeler.GetInput("rgb"));
-    kinect.GetOutput("depth")->Connect(gradient_labeler.GetInput("depth"));
     kinect.GetOutput("pointcloud")->Connect(gradient_labeler.GetInput("pointcloud"));
+    kinect.GetOutput("depth")->Connect(to_rgb1.GetInput());
 
     gradient_labeler.GetOutput("rgb")->Connect(overlay1.GetInput());
-    gradient_labeler.GetOutput("depth")->Connect(to_rgb1.GetInput());
     gradient_labeler.GetOutput("planedistances")->Connect(to_rgb5.GetInput());
     gradient_labeler.GetOutput("planeobjects")->Connect(overlay1.GetInput("blobs"));
 
@@ -721,7 +709,6 @@ int main()
     stream.Release();
     kinect.GetOutput("depth")->Disconnect();
     kinect.GetOutput("pointcloud")->Disconnect();
-    gradient_labeler.GetOutput("depth")->Disconnect();
     gradient_labeler.GetOutput("planedistances")->Disconnect();
     gradient_labeler.GetOutput("planeobjects")->Disconnect();
 
