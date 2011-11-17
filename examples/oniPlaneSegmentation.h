@@ -57,9 +57,7 @@ private:
     void NormalizeGradientHistogram(vctDynamicMatrixRef<unsigned int>  histogram,
                                     vctDynamicMatrixRef<unsigned char> norm_histogram);
 
-    void FindHistogramBlobs(svlSampleImageMono8*  image,
-                            svlSampleImageMono32* labels,
-                            svlSampleBlobs*       blobs);
+    void ThresholdHistogram(svlSampleImageMono8*  image);
 
     void LabelImage(svlSampleBlobs* segments);
 
@@ -93,6 +91,7 @@ private:
     svlSampleImageMono8*  PlaneObjectMask;
     svlSampleImageMono32* HistogramLabels;
     svlSampleImageMono32* TempHistogram;
+    svlSampleImageMono32* TempHistogram2;
     svlSampleImageMono32* BlobLabels;
     svlSampleImageMono32* PlaneObjectLabels;
 

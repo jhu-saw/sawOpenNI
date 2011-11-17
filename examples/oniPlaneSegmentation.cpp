@@ -38,6 +38,7 @@ oniPlaneSegmentation::oniPlaneSegmentation() :
     HistogramLabels   = new svlSampleImageMono32;
     HistogramBlobs    = new svlSampleBlobs;
     TempHistogram     = new svlSampleImageMono32;
+    TempHistogram2    = new svlSampleImageMono32;
     Blobs             = new svlSampleBlobs;
     BlobLabels        = new svlSampleImageMono32;
     PlaneObjectMask   = new svlSampleImageMono8;
@@ -47,6 +48,7 @@ oniPlaneSegmentation::oniPlaneSegmentation() :
     HistogramImage->SetSize(histogram_size, histogram_size);
     HistogramLabels->SetSize(HistogramImage);
     TempHistogram->SetSize(HistogramImage);
+    TempHistogram2->SetSize(HistogramImage);
     HistogramBlobs->SetChannelCount(1);
     HistogramBlobs->SetBufferSize(10);
     Blobs->SetChannelCount(1);
@@ -60,6 +62,7 @@ oniPlaneSegmentation::~oniPlaneSegmentation()
     if (HistogramLabels)   delete HistogramLabels;
     if (HistogramBlobs)    delete HistogramBlobs;
     if (TempHistogram)     delete TempHistogram;
+    if (TempHistogram2)    delete TempHistogram2;
     if (Blobs)             delete Blobs;
     if (BlobLabels)        delete BlobLabels;
     if (PlaneObjectMask)   delete PlaneObjectMask;
@@ -110,34 +113,59 @@ bool oniPlaneSegmentation::Process(svlSampleImageRGB* rgb, svlSampleImage3DMap* 
 {
     if (!Initialize(rgb, pointcloud, planedistance, planeobjects)) return false;
 
+    // Compute gradient histogram
     ComputeDepthGradientHistogram(pointcloud->GetMatrixRef(), TempHistogram->GetMatrixRef());
 
+    // Blur gradient histogram to smooth clusters
     vctDynamicMatrix<double> kernel(3, 3);
     kernel.SetAll(1.0 / 9.0);
-    svlSampleImageMono32 thist;
-    thist.SetSize(TempHistogram);
-    svlImageProcessing::Convolution(TempHistogram, 0, &thist, 0, kernel);
-    svlImageProcessing::Convolution(&thist, 0, TempHistogram, 0, kernel);
+    svlImageProcessing::Convolution(TempHistogram, 0, TempHistogram2, 0, kernel);
+    svlImageProcessing::Convolution(TempHistogram2, 0, TempHistogram, 0, kernel);
 
+    // Normalize gradient histogram
     NormalizeGradientHistogram(TempHistogram->GetMatrixRef(), HistogramImage->GetMatrixRef());
-    FindHistogramBlobs(HistogramImage, HistogramLabels, HistogramBlobs);
 
+    // Apply thresholding to gradient histogram
+    ThresholdHistogram(HistogramImage);
+
+    // Find blobs on thresholded gradient histogram
+    svlImageProcessing::LabelBlobs(HistogramImage, HistogramLabels, HistogramBlobInternals);
+    svlImageProcessing::GetBlobsFromLabels(HistogramImage, HistogramLabels, HistogramBlobs, HistogramBlobInternals,
+                                           0, 0,
+                                           0.0, 0.0);
+
+    // Label image pixels according to blobs on the gradient histogram
     LabelImage(HistogramBlobs);
 
+    // Find blobs on the labeled image
     svlImageProcessing::LabelBlobs(LabelsSample, BlobLabels, BlobDetectorInternals);
     svlImageProcessing::GetBlobsFromLabels(LabelsSample, BlobLabels, Blobs, BlobDetectorInternals,
                                            0, 0,
                                            0.0, 0.0);
 
+    // Find largest blob on labeled image, that is the largest planar surface
     FindLargestSegment(BlobLabels, Blobs);
+
+    // Fit 3D plane on the points of the largest planar surface and
+    // calculate distance of every pixel from the plane
     FitPlane(BlobLabels, planedistance, pointcloud);
+
+    // Label pixels according to their distance from the plane:
+    // - pixels on the plane        = 0
+    // - pixels under the plane     = 128
+    // - pixels on top of the plane = 255
     LabelObjects(planedistance, PlaneObjectMask);
 
+    // Find blobs on the image labeled according to distance of pixels from plane
     svlImageProcessing::LabelBlobs(PlaneObjectMask, PlaneObjectLabels, PlaneBlobInternals);
     svlImageProcessing::GetBlobsFromLabels(PlaneObjectMask, PlaneObjectLabels, planeobjects, PlaneBlobInternals,
                                            MinObjectArea, 0,
                                            0.0, 0.0);
 
+    // Visualize results:
+    // - plane pixels are colored blue
+    // - blobs adjacent to the image border are colored black
+    // - blobs under or on top of the plane are drawn in their original RGB color
     VisualizePlaneObjects(rgb, planedistance, PlaneObjectLabels, planeobjects);
 
     return true;
@@ -262,7 +290,7 @@ void oniPlaneSegmentation::NormalizeGradientHistogram(vctDynamicMatrixRef<unsign
     }
 }
 
-void oniPlaneSegmentation::FindHistogramBlobs(svlSampleImageMono8* image, svlSampleImageMono32* labels, svlSampleBlobs* blobs)
+void oniPlaneSegmentation::ThresholdHistogram(svlSampleImageMono8* image)
 {
     // Thresholding
     const unsigned int pixel_count = image->GetWidth() * image->GetHeight();
@@ -272,11 +300,6 @@ void oniPlaneSegmentation::FindHistogramBlobs(svlSampleImageMono8* image, svlSam
         else *phist = 0;
         phist ++;
     }
-
-    svlImageProcessing::LabelBlobs(image, labels, HistogramBlobInternals);
-    svlImageProcessing::GetBlobsFromLabels(image, labels, blobs, HistogramBlobInternals,
-                                           0, 0,
-                                           0.0, 0.0);
 }
 
 void oniPlaneSegmentation::LabelImage(svlSampleBlobs* segments)
