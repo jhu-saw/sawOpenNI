@@ -77,6 +77,8 @@ if (cisst_FOUND)
         # svl example 2
         add_executable (oniExKinectPlaneFinder
                         planefit.h
+                        oniPlaneSegmentation.h
+                        oniPlaneSegmentation.cpp
                         oniExKinectPlaneFinder.cpp)
         target_link_libraries (oniExKinectPlaneFinder sawOpenNI ${OPENNI_LIBRARIES})
         cisst_target_link_libraries (oniExKinectPlaneFinder ${REQUIRED_CISST_LIBRARIES})
