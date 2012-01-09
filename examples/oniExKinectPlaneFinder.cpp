@@ -182,7 +182,7 @@ int main()
                 std::cerr << "GradientHistogramThreshold  = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
                 std::cerr << "PlaneDistanceThreshold [mm] = " << segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
                 std::cerr << "MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl << std::endl;
-                std::cerr << "Keyboard commands in command window:" << endl;
+                std::cerr << "Keyboard commands in command window:" << std::endl;
                 std::cerr << "  '1'   - GradientRadius --" << std::endl;
                 std::cerr << "  '2'   - GradientRadius ++" << std::endl;
                 std::cerr << "  '3'   - GradientHistogramThreshold --" << std::endl;
