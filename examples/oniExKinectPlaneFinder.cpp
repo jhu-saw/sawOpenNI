@@ -45,21 +45,29 @@ public:
         PointCloudInput = AddInput("pointcloud", false);
         AddInputType("pointcloud", svlTypeImage3DMap);
 
-        PlaneDistances = new svlSampleImageMono16;
-        PlaneObjects   = new svlSampleBlobs;
+        VisualizedImage = new svlSampleImageRGB;
+        PlaneDistances  = new svlSampleImageMono16;
+        PlaneObjects    = new svlSampleBlobs;
+        UVHistogram     = new svlSampleImageRGB;
 
-        PlaneDistancesOutput = AddOutput("planedistances",  false);
-        PlaneObjectsOutput   = AddOutput("planeobjects",    false);
+        VisualizedImageOutput = AddOutput("visualized",      false);
+        PlaneDistancesOutput  = AddOutput("planedistances",  false);
+        PlaneObjectsOutput    = AddOutput("planeobjects",    false);
+        UVHistogramOutput     = AddOutput("uv_histogram",    false);
+        SetOutputType("visualized",     svlTypeImageRGB);
         SetOutputType("planedistances", svlTypeImageMono16);
         SetOutputType("planeobjects",   svlTypeBlobs);
+        SetOutputType("uv_histogram",   svlTypeImageRGB);
     }
 
     ~CFilterPlaneSegmentation()
     {
         Release();
 
-        if (PlaneDistances) delete PlaneDistances;
-        if (PlaneObjects)   delete PlaneObjects;
+        if (VisualizedImage) delete VisualizedImage;
+        if (PlaneDistances)  delete PlaneDistances;
+        if (PlaneObjects)    delete PlaneObjects;
+        if (UVHistogram)     delete UVHistogram;
     }
 
 protected:
@@ -68,12 +76,16 @@ protected:
     {
         syncOutput = syncInput;
 
+        VisualizedImage->SetSize(syncInput);
         PlaneDistances->SetSize(syncInput);
         PlaneObjects->SetChannelCount(1);
         PlaneObjects->SetBufferSize(1000);
+        UVHistogram->SetSize(256, 256);
 
+        VisualizedImageOutput->SetupSample(VisualizedImage);
         PlaneDistancesOutput->SetupSample(PlaneDistances);
         PlaneObjectsOutput->SetupSample(PlaneObjects);
+        UVHistogramOutput->SetupSample(UVHistogram);
 
         return SVL_OK;
     }
@@ -90,15 +102,21 @@ protected:
 
             Segmentation.Process(dynamic_cast<svlSampleImageRGB*>(syncInput),
                                  pointcloud_sample,
+                                 VisualizedImage,
                                  PlaneDistances,
                                  PlaneObjects);
+            Segmentation.GetUVHistogram(UVHistogram);
 
             // Push samples to async outputs
+            VisualizedImage->SetTimestamp(syncInput->GetTimestamp());
             PlaneDistances->SetTimestamp(syncInput->GetTimestamp());
             PlaneObjects->SetTimestamp(syncInput->GetTimestamp());
+            UVHistogram->SetTimestamp(syncInput->GetTimestamp());
 
+            VisualizedImageOutput->PushSample(VisualizedImage);
             PlaneDistancesOutput->PushSample(PlaneDistances);
             PlaneObjectsOutput->PushSample(PlaneObjects);
+            UVHistogramOutput->PushSample(UVHistogram);
         }
 
         return SVL_OK;
@@ -106,11 +124,15 @@ protected:
 
 private:
     svlFilterInput*  PointCloudInput;
+    svlFilterOutput* VisualizedImageOutput;
     svlFilterOutput* PlaneDistancesOutput;
     svlFilterOutput* PlaneObjectsOutput;
+    svlFilterOutput* UVHistogramOutput;
 
+    svlSampleImageRGB*    VisualizedImage;
     svlSampleImageMono16* PlaneDistances;
     svlSampleBlobs*       PlaneObjects;
+    svlSampleImageRGB*    UVHistogram;
 
 public:
     oniPlaneSegmentation Segmentation;
@@ -124,8 +146,9 @@ int main()
     svlStreamManager stream;
 
     svlFilterSourceKinect kinect;
+    svlFilterImageChannelSwapper swapper1, swapper2, swapper3, swapper4;
     svlFilterImageOverlay overlay;
-    svlFilterImageWindow window1, window2, window3;
+    svlFilterImageWindow window1, window2, window3, window4, window5;
     svlFilterStreamTypeConverter to_rgb1(svlTypeImageMono16, svlTypeImageRGB);
     svlFilterStreamTypeConverter to_rgb2(svlTypeImageMono16, svlTypeImageRGB);
 
@@ -154,19 +177,30 @@ int main()
     window1.SetTitle("Segmented Image");
     window2.SetTitle("Depth Image");
     window3.SetTitle("Elevation Map");
+    window4.SetTitle("UV Histogram");
+    window5.SetTitle("RGB Image");
 
     // Chain filters to trunk
     stream.SetSourceFilter(&kinect);
 
-    kinect.GetOutput("rgb")->Connect(segmentation.GetInput("rgb"));
+    kinect.GetOutput("rgb")->Connect(swapper1.GetInput());
+
+    swapper1.GetOutput()->Connect(segmentation.GetInput("rgb"));
     kinect.GetOutput("pointcloud")->Connect(segmentation.GetInput("pointcloud"));
     kinect.GetOutput("depth")->Connect(to_rgb1.GetInput());
 
-    segmentation.GetOutput("rgb")->Connect(overlay.GetInput());
+    segmentation.GetOutput("visualized")->Connect(overlay.GetInput());
     segmentation.GetOutput("planedistances")->Connect(to_rgb2.GetInput());
     segmentation.GetOutput("planeobjects")->Connect(overlay.GetInput("blobs"));
+    segmentation.GetOutput("uv_histogram")->Connect(swapper2.GetInput());
+    segmentation.GetOutput("rgb")->Connect(swapper3.GetInput());
 
-    overlay.GetOutput()->Connect(window1.GetInput());
+    swapper2.GetOutput()->Connect(window4.GetInput());
+    swapper3.GetOutput()->Connect(window5.GetInput());
+
+    overlay.GetOutput()->Connect(swapper4.GetInput());
+    swapper4.GetOutput()->Connect(window1.GetInput());
+
     to_rgb1.GetOutput()->Connect(window2.GetInput());
     to_rgb2.GetOutput()->Connect(window3.GetInput());
 
@@ -181,7 +215,9 @@ int main()
                 std::cerr << "GradientRadius [pixels]     = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
                 std::cerr << "GradientHistogramThreshold  = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
                 std::cerr << "PlaneDistanceThreshold [mm] = " << segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
-                std::cerr << "MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl << std::endl;
+                std::cerr << "ColorMatchWeight            = " << std::fixed << std::setprecision(2) << segmentation.Segmentation.GetColorMatchWeight() << std::endl;
+                std::cerr << "MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                std::cerr << "PlaneID                     = " << segmentation.Segmentation.GetPlaneID() << std::endl << std::endl;
                 std::cerr << "Keyboard commands in command window:" << std::endl;
                 std::cerr << "  '1'   - GradientRadius --" << std::endl;
                 std::cerr << "  '2'   - GradientRadius ++" << std::endl;
@@ -189,8 +225,11 @@ int main()
                 std::cerr << "  '4'   - GradientHistogramThreshold ++" << std::endl;
                 std::cerr << "  '5'   - PlaneDistanceThreshold --" << std::endl;
                 std::cerr << "  '6'   - PlaneDistanceThreshold ++" << std::endl;
-                std::cerr << "  '7'   - MinObjectArea --" << std::endl;
-                std::cerr << "  '8'   - MinObjectArea ++" << std::endl;
+                std::cerr << "  '7'   - ColorMatchWeight --" << std::endl;
+                std::cerr << "  '8'   - ColorMatchWeight ++" << std::endl;
+                std::cerr << "  '9'   - MinObjectArea --" << std::endl;
+                std::cerr << "  '0'   - MinObjectArea ++" << std::endl;
+                std::cerr << "  SPACE - Switch to next plane" << std::endl;
                 std::cerr << "  'q'   - Quit" << std::endl;
                 std::cerr << "------------------------------------------" << std::endl << std::endl;
             }
@@ -200,42 +239,57 @@ int main()
             switch (ch) {
                 case '1':
                     segmentation.Segmentation.SetGradientRadius(segmentation.Segmentation.GetGradientRadius() - 1);
-                    std::cerr << "  GradientRadius [pixels]     = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
+                    std::cerr << "  GradientRadius [pixels] = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
                 break;
 
                 case '2':
                     segmentation.Segmentation.SetGradientRadius(segmentation.Segmentation.GetGradientRadius() + 1);
-                    std::cerr << "  GradientRadius [pixels]     = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
+                    std::cerr << "  GradientRadius [pixels] = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
                 break;
 
                 case '3':
                     segmentation.Segmentation.SetGradientHistogramThreshold(segmentation.Segmentation.GetGradientHistogramThreshold() - 1);
-                    std::cerr << "  GradientHistogramThreshold  = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
+                    std::cerr << "  GradientHistogramThreshold = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
                 break;
 
                 case '4':
                     segmentation.Segmentation.SetGradientHistogramThreshold(segmentation.Segmentation.GetGradientHistogramThreshold() + 1);
-                    std::cerr << "  GradientHistogramThreshold  = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
+                    std::cerr << "  GradientHistogramThreshold = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
                 break;
 
                 case '5':
-                    segmentation.Segmentation.SetPlaneDistanceThreshold(segmentation.Segmentation.GetPlaneDistanceThreshold() - 1);
-                    std::cerr << "  PlaneDistanceThreshold [mm] = " << segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
+                    segmentation.Segmentation.SetPlaneDistanceThreshold(segmentation.Segmentation.GetPlaneDistanceThreshold() - 1.0);
+                    std::cerr << "  PlaneDistanceThreshold [mm] = " << (int)segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
                 break;
 
                 case '6':
-                    segmentation.Segmentation.SetPlaneDistanceThreshold(segmentation.Segmentation.GetPlaneDistanceThreshold() + 1);
-                    std::cerr << "  PlaneDistanceThreshold [mm] = " << segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
+                    segmentation.Segmentation.SetPlaneDistanceThreshold(segmentation.Segmentation.GetPlaneDistanceThreshold() + 1.0);
+                    std::cerr << "  PlaneDistanceThreshold [mm] = " << (int)segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
                 break;
 
                 case '7':
-                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() - 1);
-                    std::cerr << "  MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                    segmentation.Segmentation.SetColorMatchWeight(segmentation.Segmentation.GetColorMatchWeight() - 0.2);
+                    std::cerr << "  ColorMatchWeight = " << std::fixed << std::setprecision(2) << segmentation.Segmentation.GetColorMatchWeight() << std::endl;
                 break;
 
                 case '8':
+                    segmentation.Segmentation.SetColorMatchWeight(segmentation.Segmentation.GetColorMatchWeight() + 0.2);
+                    std::cerr << "  ColorMatchWeight = " << std::fixed << std::setprecision(2) << segmentation.Segmentation.GetColorMatchWeight() << std::endl;
+                break;
+
+                case '9':
+                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() - 1);
+                    std::cerr << "  MinObjectArea [pixels] = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                break;
+
+                case '0':
                     segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() + 1);
-                    std::cerr << "  MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                    std::cerr << "  MinObjectArea [pixels] = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                break;
+
+                case ' ':
+                    segmentation.Segmentation.SetPlaneID(segmentation.Segmentation.GetPlaneID() + 1);
+                    std::cerr << "  PlaneID = " << segmentation.Segmentation.GetPlaneID() << std::endl;
                 break;
             }
         } while (ch != 'q' && ch != 'Q');
@@ -250,8 +304,10 @@ int main()
     stream.Release();
     kinect.GetOutput("depth")->Disconnect();
     kinect.GetOutput("pointcloud")->Disconnect();
+    segmentation.GetOutput("visualized")->Disconnect();
     segmentation.GetOutput("planedistances")->Disconnect();
     segmentation.GetOutput("planeobjects")->Disconnect();
+    segmentation.GetOutput("uv_histogram")->Disconnect();
 
     return 1;
 }

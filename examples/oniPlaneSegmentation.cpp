@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-    */
 /* ex: set filetype=cpp softtabstop=4 shiftwidth=4 tabstop=4 cindent expandtab: */
 
-/*
+/*Frame
   $Id: $
 
   Author(s):  Balazs Vagvolgyi
@@ -22,18 +22,83 @@ http://www.cisst.org/cisst/license.txt.
 #include "oniPlaneSegmentation.h"
 #include "planefit.h"
 
+#define _oniPlane_VERBOSE   0
+
+
+/**********************/
+/*** oniPlane class ***/
+/**********************/
+
+oniPlane::oniPlane() :
+    ID(-1),
+    Frame(-1),
+    First(-1),
+    Area(0),
+    Rect(-1, -1, -1, -1),
+    Mask(0),
+    Dist(0),
+    Hist(0)
+{
+    CoW.SetAll(-1);
+    Plane.SetAll(0.0);
+}
+
+oniPlane::~oniPlane()
+{
+    Release();
+}
+
+void oniPlane::Allocate(unsigned int width, unsigned int height)
+{
+    Release();
+
+    Mask = new svlSampleImageMono8;
+    Dist = new svlSampleImageMono16;
+    Hist = new svlSampleImageMono32;
+    Mask->SetSize(width, height);
+    Dist->SetSize(width, height);
+    Hist->SetSize(256, 256);
+}
+
+void oniPlane::Release()
+{
+    delete Mask;
+    delete Dist;
+    delete Hist;
+}
+
+void oniPlane::CopyOf(const oniPlane & other)
+{
+    ID    = other.ID;
+    Frame = other.Frame;
+    First = other.First;
+    CoW.Assign(other.CoW);
+    Area  = other.Area;
+    Rect.Assign(other.Rect);
+    Mask->CopyOf(other.Mask);
+    Dist->CopyOf(other.Dist);
+    Hist->CopyOf(other.Hist);
+    Plane.Assign(other.Plane);
+}
+
 
 /**********************************/
 /*** oniPlaneSegmentation class ***/
 /**********************************/
 
 oniPlaneSegmentation::oniPlaneSegmentation() :
-    PlaneDistanceThreshold(20),
+    Initialized(false),
+    FrameCounter(0),
+    PlaneIDCounter(0),
+    PlaneID(0),
+    PlaneDistanceThreshold(700),
+    ColorMatchWeight(0),
     GradientHistogramThreshold(20),
-    MinObjectArea(200),
-    GradientRadius(25)
+    MinObjectArea(120),
+    GradientRadius(25),
+    MaxPlaneMatchError(30)
 {
-    LabelsSample      = new svlSampleImageMono8;
+    GradientLabels    = new svlSampleImageMono8;
     HistogramImage    = new svlSampleImageMono8;
     HistogramLabels   = new svlSampleImageMono32;
     HistogramBlobs    = new svlSampleBlobs;
@@ -41,11 +106,16 @@ oniPlaneSegmentation::oniPlaneSegmentation() :
     TempHistogram2    = new svlSampleImageMono32;
     Blobs             = new svlSampleBlobs;
     BlobLabels        = new svlSampleImageMono32;
-    PlaneObjectMask   = new svlSampleImageMono8;
+    TempMask          = new svlSampleImageMono8;
     PlaneObjectLabels = new svlSampleImageMono32;
+    YUVImage          = new svlSampleImageRGB;
+    UVHistogramImage  = new svlSampleImageRGB;
 
-    const unsigned int histogram_size = 256;
-    HistogramImage->SetSize(histogram_size, histogram_size);
+    PlaneCache.SetSize(3); // Maximum number of planes detected on a frame
+    VisiblePlanePositions.SetSize(PlaneCache.size());
+    PlaneHistory.SetSize(20); // Number of recent planes the algorithm remembers
+
+    HistogramImage->SetSize(256, 256);
     HistogramLabels->SetSize(HistogramImage);
     TempHistogram->SetSize(HistogramImage);
     TempHistogram2->SetSize(HistogramImage);
@@ -53,11 +123,12 @@ oniPlaneSegmentation::oniPlaneSegmentation() :
     HistogramBlobs->SetBufferSize(10);
     Blobs->SetChannelCount(1);
     Blobs->SetBufferSize(1000);
+    UVHistogramImage->SetSize(256, 256);
 }
 
 oniPlaneSegmentation::~oniPlaneSegmentation()
 {
-    if (LabelsSample)      delete LabelsSample;
+    if (GradientLabels)    delete GradientLabels;
     if (HistogramImage)    delete HistogramImage;
     if (HistogramLabels)   delete HistogramLabels;
     if (HistogramBlobs)    delete HistogramBlobs;
@@ -65,18 +136,41 @@ oniPlaneSegmentation::~oniPlaneSegmentation()
     if (TempHistogram2)    delete TempHistogram2;
     if (Blobs)             delete Blobs;
     if (BlobLabels)        delete BlobLabels;
-    if (PlaneObjectMask)   delete PlaneObjectMask;
+    if (TempMask)          delete TempMask;
     if (PlaneObjectLabels) delete PlaneObjectLabels;
+    if (YUVImage)          delete YUVImage;
+    if (UVHistogramImage)  delete UVHistogramImage;
 }
 
-void oniPlaneSegmentation::SetPlaneDistanceThreshold(unsigned int threshold)
+void oniPlaneSegmentation::SetPlaneID(unsigned int planeid)
 {
-    if (threshold > 0) PlaneDistanceThreshold = threshold;
+    if (planeid >= PlaneCache.size()) planeid = 0;
+    PlaneID = planeid;
 }
 
-unsigned int oniPlaneSegmentation::GetPlaneDistanceThreshold() const
+unsigned int oniPlaneSegmentation::GetPlaneID() const
 {
-    return PlaneDistanceThreshold;
+    return PlaneID;
+}
+
+void oniPlaneSegmentation::SetPlaneDistanceThreshold(double threshold)
+{
+    if (threshold >= 0.0) PlaneDistanceThreshold = static_cast<unsigned int>((threshold + 0.005) * 100.0);
+}
+
+double oniPlaneSegmentation::GetPlaneDistanceThreshold() const
+{
+    return 0.01 * PlaneDistanceThreshold;
+}
+
+void oniPlaneSegmentation::SetColorMatchWeight(double weight)
+{
+    if (weight >= 0.0) ColorMatchWeight = static_cast<unsigned int>((weight + 0.0005) * 1000.0);
+}
+
+double oniPlaneSegmentation::GetColorMatchWeight() const
+{
+    return 0.001 * ColorMatchWeight;
 }
 
 void oniPlaneSegmentation::SetGradientHistogramThreshold(unsigned char threshold)
@@ -109,9 +203,14 @@ unsigned int oniPlaneSegmentation::GetGradientRadius() const
     return GradientRadius;
 }
 
-bool oniPlaneSegmentation::Process(svlSampleImageRGB* rgb, svlSampleImage3DMap* pointcloud, svlSampleImageMono16* planedistance, svlSampleBlobs* planeobjects)
+bool oniPlaneSegmentation::Process(svlSampleImageRGB* rgb, svlSampleImage3DMap* pointcloud, svlSampleImageRGB* visualized, svlSampleImageMono16* planedistance, svlSampleBlobs* planeobjects)
 {
-    if (!Initialize(rgb, pointcloud, planedistance, planeobjects)) return false;
+    if (!Initialized) {
+        if (!Initialize(rgb, pointcloud, visualized, planedistance, planeobjects)) return false;
+    }
+
+    // Calculate YUV image
+    svlConverter::RGB24toYUV444(rgb->GetUCharPointer(), YUVImage->GetUCharPointer(), YUVImage->GetWidth() * YUVImage->GetHeight());
 
     // Compute gradient histogram
     ComputeDepthGradientHistogram(pointcloud->GetMatrixRef(), TempHistogram->GetMatrixRef());
@@ -135,45 +234,95 @@ bool oniPlaneSegmentation::Process(svlSampleImageRGB* rgb, svlSampleImage3DMap* 
                                            0.0, 0.0);
 
     // Label image pixels according to blobs on the gradient histogram
-    LabelImage(HistogramBlobs);
+    LabelImage(HistogramBlobs, GradientLabels);
 
     // Find blobs on the labeled image
-    svlImageProcessing::LabelBlobs(LabelsSample, BlobLabels, BlobDetectorInternals);
-    svlImageProcessing::GetBlobsFromLabels(LabelsSample, BlobLabels, Blobs, BlobDetectorInternals,
+    svlImageProcessing::LabelBlobs(GradientLabels, BlobLabels, BlobDetectorInternals);
+    svlImageProcessing::GetBlobsFromLabels(GradientLabels, BlobLabels, Blobs, BlobDetectorInternals,
                                            0, 0,
                                            0.0, 0.0);
 
-    // Find largest blob on labeled image, that is the largest planar surface
-    FindLargestSegment(BlobLabels, Blobs);
+    // Find largest blobs on labeled image, those are the largest planar surfaces
+    PlaneCacheSize = FindLargestSegments(BlobLabels, PlaneCache, Blobs);
 
-    // Fit 3D plane on the points of the largest planar surface and
-    // calculate distance of every pixel from the plane
-    FitPlane(BlobLabels, planedistance, pointcloud);
+    // Go through all planes found
+    unsigned int planeid;
+    for (planeid = 0; planeid < PlaneCacheSize; planeid ++)
+    {
+        // Fit 3D plane on the points of the planar surface and
+        // calculate distance of every pixel from the plane
+        FitPlane(planeid, pointcloud);
 
-    // Label pixels according to their distance from the plane:
-    // - pixels on the plane        = 0
-    // - pixels under the plane     = 128
-    // - pixels on top of the plane = 255
-    LabelObjects(planedistance, PlaneObjectMask);
+        // Label pixels according to their distance from the plane:
+        // - pixels on the plane        = 0
+        // - pixels under the plane     = 128
+        // - pixels on top of the plane = 255
+        LabelObjects(planeid);
 
-    // Find blobs on the image labeled according to distance of pixels from plane
-    svlImageProcessing::LabelBlobs(PlaneObjectMask, PlaneObjectLabels, PlaneBlobInternals);
-    svlImageProcessing::GetBlobsFromLabels(PlaneObjectMask, PlaneObjectLabels, planeobjects, PlaneBlobInternals,
-                                           MinObjectArea, 0,
-                                           0.0, 0.0);
+        // Calculate UV histogram for plane
+        CalculateColorHistogram(planeid, YUVImage);
 
-    // Visualize results:
-    // - plane pixels are colored blue
-    // - blobs adjacent to the image border are colored black
-    // - blobs under or on top of the plane are drawn in their original RGB color
-    VisualizePlaneObjects(rgb, planedistance, PlaneObjectLabels, planeobjects);
+        if (ColorMatchWeight) {
+            // Refine plane definition using color similarity measures
+            FilterLabels(planeid, YUVImage);
+
+            // Close pixel size holes on the plane
+            svlImageProcessing::Erode(PlaneCache[planeid].Mask, 0, TempMask, 0, 1);
+            svlImageProcessing::Dilate(TempMask, 0, PlaneCache[planeid].Mask, 0, 1);
+        }
+
+        // Update plane statistics
+        ComputePlaneStats(planeid);
+
+        PlaneCache[planeid].Frame = static_cast<int>(FrameCounter);
+    }
+
+    // Plane tracking (match plane cache with previously detected planes)
+    TrackPlanes();
+
+    // Draw planes in uniques color on visualization image
+    DrawPlanes(visualized);
+
+    planeid = PlaneID;
+    if (planeid < PlaneCacheSize) {
+/*
+        // Find blobs on the image labeled according to distance of pixels from plane
+        svlImageProcessing::LabelBlobs(PlaneCache[planeid].Mask, PlaneObjectLabels, PlaneBlobInternals);
+        svlImageProcessing::GetBlobsFromLabels(PlaneCache[planeid].Mask, PlaneObjectLabels, planeobjects, PlaneBlobInternals,
+                                               MinObjectArea, 0,
+                                               0.0, 0.0);
+
+        // Visualize results:
+        // - plane pixels are colored blue
+        // - blobs adjacent to the image border are colored black
+        // - blobs under or on top of the plane are drawn in their original RGB color
+        VisualizePlaneObjects(rgb, visualized, PlaneCache[planeid].Mask, PlaneObjectLabels, planeobjects);
+*/
+        // Draw UV histogram
+        CreateColorHistogramImage(PlaneCache[planeid].Hist, UVHistogramImage);
+
+        planedistance->CopyOf(PlaneCache[planeid].Dist);
+    }
+
+    FrameCounter ++;
 
     return true;
 }
 
-bool oniPlaneSegmentation::Initialize(svlSampleImageRGB* rgb, svlSampleImage3DMap* pointcloud, svlSampleImageMono16* planedistance, svlSampleBlobs* planeobjects)
+bool oniPlaneSegmentation::GetUVHistogram(svlSampleImageRGB* uvhistogramimage)
 {
-    if (!rgb || !pointcloud || !planedistance || !planeobjects) return false;
+    if (!uvhistogramimage) return false;
+    vctDynamicMatrix<double> kernel(3, 3);
+    kernel.SetAll(1.1 / 9.0);
+    svlImageProcessing::Convolution(UVHistogramImage, 0, uvhistogramimage, 0, kernel);
+    svlImageProcessing::Convolution(uvhistogramimage, 0, UVHistogramImage, 0, kernel);
+    svlImageProcessing::Convolution(UVHistogramImage, 0, uvhistogramimage, 0, kernel);
+    return true;
+}
+
+bool oniPlaneSegmentation::Initialize(svlSampleImageRGB* rgb, svlSampleImage3DMap* pointcloud, svlSampleImageRGB* visualized, svlSampleImageMono16* planedistance, svlSampleBlobs* planeobjects)
+{
+    if (!rgb || !pointcloud || !visualized || !planedistance || !planeobjects) return false;
 
     const unsigned int width  = rgb->GetWidth();
     const unsigned int height = rgb->GetHeight();
@@ -183,17 +332,33 @@ bool oniPlaneSegmentation::Initialize(svlSampleImageRGB* rgb, svlSampleImage3DMa
 
     // Resize output samples if needed
     planedistance->SetSize(width, height);
+    visualized->SetSize(width, height);
     planeobjects->SetChannelCount(1);
     planeobjects->SetBufferSize(1000);
 
     // Resize buffers if needed
-    LabelsSample->SetSize(width, height);
+    GradientLabels->SetSize(width, height);
     BlobLabels->SetSize(width, height);
-    PlaneObjectMask->SetSize(width, height);
+    TempMask->SetSize(width, height);
     PlaneObjectLabels->SetSize(width, height);
+    YUVImage->SetSize(width, height);
     GradX.SetSize(height, width);
     GradY.SetSize(height, width);
 
+    for (unsigned int i = 0; i < PlaneCache.size(); i ++) {
+        PlaneCache[i].Allocate(width, height);
+    }
+
+    for (unsigned int i = 0; i < PlaneHistory.size(); i ++) {
+        PlaneHistory[i].Allocate(width, height);
+    }
+
+    VisiblePlanePositions.SetAll(-1);
+    NumberOfVisiblePlanes = 0;
+    PlaneHistoryPosition  = -1;
+    FrameCounter          = 0;
+
+    Initialized = true;
     return true;
 }
 
@@ -292,7 +457,6 @@ void oniPlaneSegmentation::NormalizeGradientHistogram(vctDynamicMatrixRef<unsign
 
 void oniPlaneSegmentation::ThresholdHistogram(svlSampleImageMono8* image)
 {
-    // Thresholding
     const unsigned int pixel_count = image->GetWidth() * image->GetHeight();
     unsigned char* phist = image->GetUCharPointer();
     for (unsigned int i = 0; i < pixel_count; i ++) {
@@ -302,13 +466,13 @@ void oniPlaneSegmentation::ThresholdHistogram(svlSampleImageMono8* image)
     }
 }
 
-void oniPlaneSegmentation::LabelImage(svlSampleBlobs* segments)
+void oniPlaneSegmentation::LabelImage(svlSampleBlobs* segments, svlSampleImageMono8* gradlabels)
 {
     const unsigned int segment_count = std::min(segments->GetBufferUsed(), 3u);
-    const unsigned int pixel_count = LabelsSample->GetWidth() * LabelsSample->GetHeight();
+    const unsigned int pixel_count = gradlabels->GetWidth() * gradlabels->GetHeight();
     const int hist_center = TempHistogram->GetWidth() / 2;
 
-    unsigned char *img = LabelsSample->GetUCharPointer();
+    unsigned char *img = gradlabels->GetUCharPointer();
     short *gradx = GradX.Pointer();
     short *grady = GradY.Pointer();
 
@@ -355,45 +519,64 @@ unsigned int oniPlaneSegmentation::sqrt_uint32(unsigned int value)
     return g;
 }
 
-void oniPlaneSegmentation::FindLargestSegment(svlSampleImageMono32* labels, svlSampleBlobs* segments)
+unsigned int oniPlaneSegmentation::FindLargestSegments(svlSampleImageMono32* labels, vctDynamicVector<oniPlane>& planes, svlSampleBlobs* segments)
 {
+    const unsigned int segments_to_find = planes.size();
+    if (segments_to_find < 1) return 0;
+
     const unsigned int segment_count = segments->GetBufferUsed();
     const unsigned int pixel_count = labels->GetWidth() * labels->GetHeight();
+    unsigned char *pplnlabels;
+    unsigned int *plabels;
 
+    int prev_largest = 10000000, largest_size, label, ID;
+    unsigned int N;
     svlBlob blob;
-    int largest_size = -1, label = -1, id = -1;
-    for (unsigned int i = 0; i < segment_count; i ++) {
-        segments->GetBlob(i, blob);
-        if (blob.used && static_cast<int>(blob.area) > largest_size) {
-            largest_size = blob.area;
-            label = blob.label;
-            id = i + 1;
+
+    for (N = 0; N < segments_to_find; N ++) {
+
+        // Find Nth largest blob
+        largest_size = -1; label = -1; ID = -1;
+        for (unsigned int i = 0; i < segment_count; i ++) {
+
+            segments->GetBlob(i, blob);
+            if (blob.used &&
+                static_cast<int>(blob.area) > largest_size &&
+                static_cast<int>(blob.area) < prev_largest) {
+                largest_size = blob.area;
+                label = blob.label;
+                ID = i + 1;
+            }
+        }
+        prev_largest = largest_size;
+        if (ID < 1) break;
+
+        // Mark blob on labels image
+        plabels    = labels->GetPointer();
+        pplnlabels = planes[N].Mask->GetPointer();
+        for (unsigned int i = 0;i < pixel_count; i ++, plabels ++, pplnlabels ++) {
+            if (static_cast<int>(*plabels) != ID) *pplnlabels = 0;
+            else *pplnlabels = 255;
         }
     }
 
-    unsigned int* plabels = labels->GetPointer();
+    // Zero the unused plane label maps
+    for (; N < segments_to_find; N ++) memset(planes[N].Mask->GetPointer(), 0, pixel_count * 4);
 
-    if (id < 1) {
-        memset(plabels, 0, pixel_count * 4);
-    }
-    else {
-        for (unsigned int i = 0; i < pixel_count; i ++) {
-            if (static_cast<int>(*plabels) != id) *plabels = 0;
-            else *plabels = 255;
-            plabels ++;
-        }
-    }
+    return N;
 }
 
-void oniPlaneSegmentation::FitPlane(svlSampleImageMono32* labels, svlSampleImageMono16* distances, svlSampleImage3DMap* points)
+void oniPlaneSegmentation::FitPlane(unsigned int planeid, svlSampleImage3DMap* points)
 {
+    svlSampleImageMono8*  labels    = PlaneCache[planeid].Mask;
+    svlSampleImageMono16* distances = PlaneCache[planeid].Dist;
     const unsigned int width  = labels->GetWidth();
     const unsigned int height = labels->GetHeight();
 
     if (PlaneFitPoints.size() < (width * height)) PlaneFitPoints.SetSize(width * height);
 
     vctDynamicMatrixRef<float> pointcloud(points->GetMatrixRef());
-    unsigned int* plabels = labels->GetPointer();
+    unsigned char* plabels = labels->GetPointer();
     unsigned int i, j, c = 0;
     float *pf1, *pf2;
     double cx = 0, cy = 0, cz = 0;
@@ -423,11 +606,14 @@ void oniPlaneSegmentation::FitPlane(svlSampleImageMono32* labels, svlSampleImage
         vctDynamicVectorRef<vctFloat3> point_vec(PlaneFitPoints, 0, c);
         PlaneFit<float> fitter;
 
-        fitter.Calculate(point_vec, PlaneFitWeights, Plane);
+        fitter.Calculate(point_vec, PlaneFitWeights, PlaneCache[planeid].Plane);
 
         // Check distance of points from plane
-        float a = Plane[0], b = Plane[1], c = Plane[2], d = Plane[3];
-        float normlen = sqrt(a * a + b * b + c * c);
+        const float a = PlaneCache[planeid].Plane[0];
+        const float b = PlaneCache[planeid].Plane[1];
+        const float c = PlaneCache[planeid].Plane[2];
+        const float d = PlaneCache[planeid].Plane[3];
+        const float normlen = sqrt(a * a + b * b + c * c);
         float dist;
         int ival;
         unsigned short* pdistances = distances->GetPointer();
@@ -450,54 +636,276 @@ void oniPlaneSegmentation::FitPlane(svlSampleImageMono32* labels, svlSampleImage
     }
 }
 
-void oniPlaneSegmentation::LabelObjects(svlSampleImageMono16* distances, svlSampleImageMono8* labels)
+void oniPlaneSegmentation::LabelObjects(unsigned int planeid)
 {
+    svlSampleImageMono8*  planelabels = PlaneCache[planeid].Mask;
+    svlSampleImageMono16* distances   = PlaneCache[planeid].Dist;
+
+    const unsigned int threshold   = PlaneDistanceThreshold;
+    const unsigned int pixel_count = distances->GetWidth() * distances->GetHeight();
+
     unsigned short* pdistances = distances->GetPointer();
-    unsigned char* plabels = labels->GetPointer();
-    const unsigned int width  = labels->GetWidth();
-    const unsigned int height = labels->GetHeight();
-    unsigned int i, j;
+    unsigned char*  plab       = planelabels->GetPointer();
+
     unsigned int dist;
 
-    const unsigned int threshold = PlaneDistanceThreshold * 100;
-
-    for (j = 0; j < height; j ++) {
-        for (i = 0; i < width; i ++) {
-            dist = *pdistances;
-            if (dist >= 32768) {
-                if ((dist - 32768) >= threshold) *plabels = 255;
-                else *plabels = 0;
-            }
-            else {
-                if ((32768 - dist) >= threshold) *plabels = 128;
-                else *plabels = 0;
-            }
-
-            pdistances ++;
-            plabels ++;
+    for (unsigned int i = 0; i < pixel_count; i ++, pdistances ++, plab ++) {
+        dist = *pdistances;
+        if (dist >= 32768) {
+            if ((dist - 32768) >= threshold) *plab = 255;
+            else *plab = 0;
+        }
+        else {
+            if ((32768 - dist) >= threshold) *plab = 128;
+            else *plab = 0;
         }
     }
 }
 
-void oniPlaneSegmentation::VisualizePlaneObjects(svlSampleImageRGB* image, svlSampleImageMono16* distances, svlSampleImageMono32* labels, svlSampleBlobs* blobs)
+void oniPlaneSegmentation::CalculateColorHistogram(unsigned int planeid, svlSampleImageRGB* yuvimage)
 {
+    svlSampleImageMono8*  planelabels = PlaneCache[planeid].Mask;
+    svlSampleImageMono32* uvhistogram = PlaneCache[planeid].Hist;
+
+    const unsigned int pixel_count = yuvimage->GetWidth() * yuvimage->GetHeight();
+
+    unsigned char* pyuv  = yuvimage->GetUCharPointer();
+    unsigned char* plab  = planelabels->GetUCharPointer();
+    unsigned int*  phist = uvhistogram->GetPointer();
+
+    unsigned int size = 0;
+
+    memset(uvhistogram->GetUCharPointer(), 0, uvhistogram->GetDataSize());
+
+    // Calculate histogram
+    for (unsigned int i = 0; i < pixel_count; i ++, pyuv += 3, plab ++) {
+        if (*plab == 0) {
+            phist[256 * pyuv[2] + pyuv[1]] ++;
+            size ++;
+        }
+    }
+
+    if (size > 0) {
+        // Normalize histogram to volume = 100000
+        unsigned int histsize = 256 * 256;
+        for (unsigned int i = 0; i < histsize; i ++, phist ++) {
+            *phist = ((*phist) * 100000) / size;
+        }
+    }
+}
+
+void oniPlaneSegmentation::FilterLabels(unsigned int planeid, svlSampleImageRGB* yuvimage)
+{
+    svlSampleImageMono8*  planelabels = PlaneCache[planeid].Mask;
+    svlSampleImageMono16* distances   = PlaneCache[planeid].Dist;
+    svlSampleImageMono32* uvhistogram = PlaneCache[planeid].Hist;
+
+    const unsigned int dist_threshold = PlaneDistanceThreshold; // [100th  of a mm distance]
+    const unsigned int col_weight     = ColorMatchWeight;
+    const unsigned int pixel_count    = yuvimage->GetWidth() * yuvimage->GetHeight();
+
     unsigned short* pdistances = distances->GetPointer();
-    unsigned int* plabels = labels->GetPointer();
-    unsigned char* pimage = image->GetUCharPointer();
-    svlBlob* pblobs = blobs->GetBlobsPointer();
+    unsigned char*  plab       = planelabels->GetPointer();
+    unsigned char*  pyuv       = yuvimage->GetUCharPointer();
+    unsigned int*   phist      = uvhistogram->GetPointer();
 
-    const unsigned int blob_count = blobs->GetBufferUsed();
-    const unsigned int width  = image->GetWidth();
-    const unsigned int height = image->GetHeight();
-    const int right  = width - 1;
-    const int bottom = height - 1;
+    unsigned int dist, colmatch;
+    unsigned char y, u, v;
+
+    for (unsigned int i = 0; i < pixel_count; i ++, plab ++, pdistances ++) {
+        if (*plab == 255) { // When pixel is on top of the surface
+            y = *pyuv; pyuv ++;
+            u = *pyuv; pyuv ++;
+            v = *pyuv; pyuv ++;
+
+            colmatch = col_weight * phist[256 * v + u] / 1000;
+
+            dist = *pdistances;
+            if (dist >= 32768) dist -= 32768;
+            else dist = 32768 - dist;
+
+            if (colmatch < dist) dist -= colmatch;
+            else dist = 0;
+
+            if (dist <= dist_threshold) *plab = 0;
+        }
+        else pyuv += 3;
+    }
+}
+
+void oniPlaneSegmentation::ComputePlaneStats(unsigned int planeid)
+{
+    const int width  = PlaneCache[planeid].Mask->GetWidth();
+    const int height = PlaneCache[planeid].Mask->GetHeight();
+
+    unsigned char* pplnlab = PlaneCache[planeid].Mask->GetPointer();
+    int i, j, wx = 0, wy = 0, left = 10000, right = -1, top = 10000, bottom = -1;
+    unsigned int area = 0;
+
+    for (j = 0; j < height; j ++) {
+        for (i = 0; i < width; i ++, pplnlab ++) {
+            if (*pplnlab == 0) {
+                // Pixel belongs to plane
+                area ++;
+                wx += i;
+                wy += j;
+                if (left > i)   left = i;
+                if (right < i)  right = i;
+                if (top > i)    top = i;
+                if (bottom < i) bottom = i;
+            }
+        }
+    }
+
+    if (area > 0) {
+        PlaneCache[planeid].CoW[0] = wx / area;
+        PlaneCache[planeid].CoW[1] = wy / area;
+        PlaneCache[planeid].Area   = area;
+        PlaneCache[planeid].Rect.Assign(left, top, right, bottom);
+    }
+    else {
+        PlaneCache[planeid].CoW[0] = -1;
+        PlaneCache[planeid].CoW[1] = -1;
+        PlaneCache[planeid].Area   = 0;
+        PlaneCache[planeid].Rect.Assign(-1, -1, -1, -1);
+    }
+}
+
+void oniPlaneSegmentation::TrackPlanes()
+{
+    if (PlaneCacheSize < 1) {
+        // Lost tracking of all planes
+        // Update plane history
+        // Mark all previously seen planes as non-visible
+        VisiblePlanePositions.SetAll(-1);
+        NumberOfVisiblePlanes = 0;
+        return;
+    }
+
+    unsigned int i, j, v;
+    int dx, dy, ac, ah, dist, areadiff, error, bestmatch, minerror;
+
+    // Match previously visible planes to plane cache
+    for (j = 0; j < PlaneCacheSize; j ++) {
+        bestmatch = -1;
+        minerror  = 10000000;
+
+        for (i = 0; i < NumberOfVisiblePlanes; i ++) {
+            v = VisiblePlanePositions[i];
+
+            // calculate distance between center-of-weights
+            dx = PlaneCache[j].CoW[0] - PlaneHistory[v].CoW[0];
+            dy = PlaneCache[j].CoW[1] - PlaneHistory[v].CoW[1];
+            dist = sqrt_uint32(dx * dx + dy * dy);
+
+            // calculate change in area size [percentages]
+            ac = static_cast<int>(PlaneCache[j].Area);
+            ah = static_cast<int>(PlaneHistory[v].Area);
+            areadiff = std::abs(ac - ah) * 100 / ah;
+
+            error = dist + areadiff;
+            if (error < minerror) {
+                minerror = error;
+                bestmatch = v;
+            }
+        }
+
+        if (bestmatch >= 0 && minerror <= static_cast<int>(MaxPlaneMatchError)) {
+            // Match found
+            PlaneCache[j].ID = PlaneHistory[bestmatch].ID;
+
+#if _oniPlane_VERBOSE > 0
+            std::cerr << ". Matched cache item " << j << " with history item at position " << bestmatch
+                      << "(ID=" << PlaneHistory[bestmatch].ID << ", error=" << minerror << ")" << std::endl;
+#endif // _oniPlane_VERBOSE
+        }
+        else {
+            // Generate new plane ID
+            PlaneCache[j].ID    = PlaneIDCounter ++;
+            PlaneCache[j].First = FrameCounter;
+
+#if _oniPlane_VERBOSE > 0
+            std::cerr << "+ Add cache item " << j << " to history at position " << PlaneHistoryPosition
+                      << "(ID=" << PlaneCache[j].ID << ", minerror=" << minerror << ")" << std::endl;
+#endif // _oniPlane_VERBOSE
+        }
+
+        // Increment history position
+        PlaneHistoryPosition ++;
+        // Roll over if needed
+        if (PlaneHistoryPosition >= static_cast<int>(PlaneHistory.size())) PlaneHistoryPosition = 0;
+
+        // Copy plane data to history
+        PlaneHistory[PlaneHistoryPosition].CopyOf(PlaneCache[j]);
+
+        VisiblePlanePositions[j] = PlaneHistoryPosition;
+    }
+
+    NumberOfVisiblePlanes = PlaneCacheSize;
+}
+
+void oniPlaneSegmentation::DrawPlanes(svlSampleImageRGB* visualized)
+{
+    const unsigned int pixel_count = visualized->GetWidth() * visualized->GetHeight();
+
+    unsigned char *pplnlab, *pvis;
+    std::stringstream strstr;
     unsigned int i, j;
-    unsigned int dist;
+    svlRGB rgb;
+    int pos;
 
-    const unsigned int threshold = PlaneDistanceThreshold * 100;
+    memset(visualized->GetUCharPointer(), 0, visualized->GetDataSize());
+
+    for (j = 0; j < NumberOfVisiblePlanes; j ++) {
+        if ((PlaneCache[j].Frame - PlaneCache[j].First) < 10) continue;
+
+        pplnlab = PlaneCache[j].Mask->GetPointer();
+        pvis    = visualized->GetUCharPointer();
+        pos     = VisiblePlanePositions[j];
+        rgb     = GetUniqueColorForNumber(PlaneHistory[pos].ID);
+
+        for (i = 0; i < pixel_count; i ++, pplnlab ++) {
+            if (*pplnlab == 0) {
+                // Pixel belongs to plane
+                *pvis = rgb.r; pvis ++;
+                *pvis = rgb.g; pvis ++;
+                *pvis = rgb.b; pvis ++;
+            }
+            else pvis += 3;
+        }
+    }
+
+    for (j = 0; j < NumberOfVisiblePlanes; j ++) {
+        if ((PlaneCache[j].Frame - PlaneCache[j].First) < 10) continue;
+
+        pos = VisiblePlanePositions[j];
+        strstr.str("");
+        strstr << PlaneHistory[pos].ID;
+        svlDraw::Text(visualized, 0,
+                      svlPoint2D(PlaneHistory[pos].CoW[0], PlaneHistory[pos].CoW[1]),
+                      strstr.str(),
+                      14,
+                      svlRGB(255, 255, 255));
+    }
+}
+
+void oniPlaneSegmentation::VisualizePlaneObjects(svlSampleImageRGB* image, svlSampleImageRGB* visualized, svlSampleImageMono8* planelabels, svlSampleImageMono32* objectlabels, svlSampleBlobs* blobs)
+{
+    const unsigned int width       = image->GetWidth();
+    const unsigned int height      = image->GetHeight();
+    const unsigned int pixel_count = width * height;
+    const unsigned int blob_count  = blobs->GetBufferUsed();
+    const int          right       = width  - 1;
+    const int          bottom      = height - 1;
+
+    unsigned char* pplnlab = planelabels->GetPointer();
+    unsigned int*  pobjlab = objectlabels->GetPointer();
+    unsigned char* pimage  = image->GetUCharPointer();
+    unsigned char* pvis    = visualized->GetUCharPointer();
+    svlBlob*       pblobs  = blobs->GetBlobsPointer();
 
     // Remove blobs that are at the image border
-    for ( i = 0; i < blob_count; i ++) {
+    for (unsigned int i = 0; i < blob_count; i ++) {
         if (pblobs[i].used &&
             (pblobs[i].left   <= 0  ||
              pblobs[i].right  >= right ||
@@ -507,48 +915,92 @@ void oniPlaneSegmentation::VisualizePlaneObjects(svlSampleImageRGB* image, svlSa
         }
     }
 
-    for (j = 0; j < height; j ++) {
-        for (i = 0; i < width; i ++) {
-
-            dist = *pdistances;
-            if (dist >= 32768) {
-                if ((dist - 32768) < threshold) {
-                    *pimage = 128; pimage ++;
-                    *pimage = 0;   pimage ++;
-                    *pimage = 0;   pimage ++;
-                }
-                else {
-                    if (*plabels > 0 && !pblobs[*plabels - 1].used) {
-                        *pimage = 0; pimage ++;
-                        *pimage = 0; pimage ++;
-                        *pimage = 0; pimage ++;
+    for (unsigned int i = 0; i < pixel_count; i ++, pimage += 3, pplnlab ++, pobjlab ++) {
+        if (*pplnlab == 0) {
+            // Pixel belongs to plane
+            *pvis = 128; pvis ++;
+            *pvis = 0;   pvis ++;
+            *pvis = 0;   pvis ++;
+        }
+        else {
+            if (*pplnlab == 255) {
+                // Pixel is on top of the surface
+                if (*pobjlab > 0) {
+                    // Pixel belongs to an object on top of the surface
+                    if (pblobs[*pobjlab - 1].used) {
+                        // Object is valid
+                        *pvis = pimage[0]; pvis ++;
+                        *pvis = pimage[1]; pvis ++;
+                        *pvis = pimage[2]; pvis ++;
                     }
                     else {
-                        pimage += 3;
+                        // Object has been filtered out
+                        *pvis = 0; pvis ++;
+                        *pvis = 0; pvis ++;
+                        *pvis = 0; pvis ++;
                     }
+                }
+                else {
+                    // Pixel doesn't belong to an object on top of the surface
+                    *pvis = 0; pvis ++;
+                    *pvis = 0; pvis ++;
+                    *pvis = 0; pvis ++;
                 }
             }
             else {
-                if ((32768 - dist) < threshold) {
-                    *pimage = 128; pimage ++;
-                    *pimage = 0;   pimage ++;
-                    *pimage = 0;   pimage ++;
-                }
-                else {
-                    if (*plabels > 0 && !pblobs[*plabels - 1].used) {
-                        *pimage = 0; pimage ++;
-                        *pimage = 0; pimage ++;
-                        *pimage = 0; pimage ++;
-                    }
-                    else {
-                        pimage += 3;
-                    }
-                }
+                // Pixel is under the surface
+                *pvis = 32; pvis ++;
+                *pvis = 0; pvis ++;
+                *pvis = 0; pvis ++;
             }
-
-            pdistances ++;
-            plabels ++;
         }
     }
+}
+
+void oniPlaneSegmentation::CreateColorHistogramImage(svlSampleImageMono32* uvhistogram, svlSampleImageRGB* uvhistogramimage)
+{
+    const unsigned int histsize = 256 * 256;
+
+    unsigned int*  phist    = uvhistogram->GetPointer();
+    unsigned char* phistimg = uvhistogramimage->GetPointer();
+
+    unsigned int i, largest = 0;
+    unsigned char prob;
+
+    // Find max. value
+    for (i = 0; i < histsize; i ++, phist ++) {
+        if (*phist > largest) largest = *phist;
+    }
+
+    if (largest > 0) {
+        // Normalize and draw histogram in YUV color space
+        for (phist = uvhistogram->GetPointer(), i = 0; i < histsize; i ++, phist ++) {
+            prob = (*phist * 255) / largest;
+            *phistimg = prob; phistimg ++;
+            *phistimg = prob; phistimg ++;
+            *phistimg = prob; phistimg ++;
+        }
+    }
+    else {
+        memset(phistimg, 0, uvhistogramimage->GetDataSize());
+    }
+}
+
+svlRGB oniPlaneSegmentation::GetUniqueColorForNumber(unsigned int number)
+{
+    svlRGB rgb;
+    const unsigned char intensity = 128;
+
+    switch (number % 6) {
+        case 0:  rgb.Assign(intensity, 0, 0);                 break;
+        case 1:  rgb.Assign(0, intensity, 0);                 break;
+        case 2:  rgb.Assign(0, 0, intensity);                 break;
+        case 3:  rgb.Assign(intensity, intensity, 0);         break;
+        case 4:  rgb.Assign(0, intensity, intensity);         break;
+        case 5:  rgb.Assign(intensity, 0, intensity);         break;
+        default: rgb.Assign(intensity, intensity, intensity); break; // should not occur
+    }
+
+    return rgb;
 }
 
