@@ -74,6 +74,20 @@ if (cisst_FOUND)
                   "${sawComponents_BINARY_DIR}/sawOpenNIConfig.cmake"
                   @ONLY@
                   )
+  # Install targets for headers and library
+  install( FILES ${HEADER_FILES}
+    DESTINATION include/sawOpenNI)
+
+  install( TARGETS sawOpenNI
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib)
+
+  install( FILES "${sawComponents_BINARY_DIR}/sawOpenNIConfig.cmake"
+    DESTINATION "${CISST_CMAKE_MODULES_INSTALL_SUFFIX}/components")
+
+  install( FILES "${sawOpenNI_SOURCE_DIR}/code/FindOpenNI.cmake"
+    DESTINATION ${CISST_CMAKE_MODULES_INSTALL_SUFFIX})
 
 else (cisst_FOUND)
   message ("Information: code in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires ${REQUIRED_CISST_LIBRARIES}")

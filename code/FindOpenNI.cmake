@@ -40,12 +40,14 @@ else (WIN32)
     # Find the file XnOpenNI.h
     # This searches in the standard include paths and check for "ni" directory
     # this works for Fedora 14 package
-    find_path (OPENNI_INCLUDE_DIR XnOpenNI.h PATH_SUFFIXES ni)
+    # this works for the Ubuntu Lucid package
+    find_path (OPENNI_INCLUDE_DIR XnOpenNI.h PATH_SUFFIXES ni openni)
     find_library (OPENNI_LIBRARY           OpenNI)
     find_library (XNCORE_LIBRARY           XnCore)
     find_library (XNFORMATS_LIBRARY        XnFormats)
     find_library (XNDEVICESENSORV2_LIBRARY XnDeviceSensorV2)
     find_library (XNDDK_LIBRARY            XnDDK)
+
 
   endif (APPLE)
 
