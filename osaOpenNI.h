@@ -104,7 +104,6 @@ class CISST_EXPORT osaOpenNI {
     std::vector<osaOpenNISkeleton*> skeletons;
 
     int users;
-    char userCalibDataPath;
     bool usingPrecapturedCalibration;
 
     char* ProjectivePointsBuffer;
@@ -139,7 +138,7 @@ class CISST_EXPORT osaOpenNI {
     */
     void Update(int type);
 
-    //! INit skeletons
+    //! Init skeletons
     void InitSkeletons();
 
     //! Get range data

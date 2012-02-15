@@ -35,9 +35,15 @@ void XN_CALLBACK_TYPE User_NewUser(xn::UserGenerator& generator,
     printf("New User %d\n", nId);
 
     osaOpenNIData* openNIDataObject = reinterpret_cast<osaOpenNIData*>(pCookie);
-
-    openNIDataObject->NewUserCallback(generator,nId);
-    openNIDataObject->usrState = CNI_USR_NEW;
+    
+    if(openNIDataObject->usingPrecapCalib){
+        xn::SkeletonCapability skelCap = openNIDataObject->usergenerator.GetSkeletonCap();
+        skelCap.LoadCalibrationDataFromFile(nId, openNIDataObject->userCalibPath);
+        skelCap.StartTracking(nId); 
+    }else{
+        openNIDataObject->NewUserCallback(generator,nId);
+        openNIDataObject->usrState = CNI_USR_NEW;
+    }
 }
 
 // Callback: An existing user was lost

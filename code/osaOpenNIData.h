@@ -54,6 +54,10 @@ public:
     //! User Calibration State
     int usrCalState;
 
+    //! Using Precaptured Calibration Data
+    bool usingPrecapCalib;
+    XnChar* userCalibPath;
+
     //! Pose Callback String
     XnChar strPose[20];
 

@@ -48,14 +48,20 @@ osaOpenNI::osaOpenNI(int numUsers, char usrPath) :
     this->Data->SetStates();
     this->users = numUsers;
 
-    this->userCalibDataPath = usrPath;
     this->usingPrecapturedCalibration = true;
+    this->Data->usingPrecapCalib = true;
+    XnChar* cpath = new XnChar(usrPath);
+    this->Data->userCalibPath = cpath;
 }
 
 
 osaOpenNI::~osaOpenNI()
 {
-    if (this->Data)             delete this->Data;
+    if (this->Data){
+        CleanupExit();
+        delete this->Data;
+        this->Data = 0;    
+    }
     if (ProjectivePointsBuffer) delete ProjectivePointsBuffer;
     if (WorldPointsBuffer)      delete WorldPointsBuffer;
 }
@@ -63,7 +69,7 @@ osaOpenNI::~osaOpenNI()
 
 void osaOpenNI::CleanupExit(void)
 {
-    Data->context.Shutdown();
+    if(this->Data) this->Data->context.Shutdown();
 }
 
 void osaOpenNI::Configure (const std::string & fname)
@@ -118,38 +124,47 @@ void osaOpenNI::Configure (const std::string & fname)
     }
 
     XnCallbackHandle hUserCallbacks, hCalibrationCallbacks, hPoseCallbacks;
-    if (!Data->usergenerator.IsCapabilitySupported(XN_CAPABILITY_SKELETON)) {
-        CMN_LOG_RUN_ERROR << "Supplied user generator doesn't support skeleton"
-                          << std::endl;
-    }
+    
+    if(this->usingPrecapturedCalibration){
+        // Dont register callbacks...
+        Data->usergenerator.GetSkeletonCap().SetSkeletonProfile(XN_SKEL_PROFILE_ALL);
+    }else{
 
-    else{
 
-        Data->usergenerator.RegisterUserCallbacks(User_NewUser,
+        if (!Data->usergenerator.IsCapabilitySupported(XN_CAPABILITY_SKELETON)) {
+            CMN_LOG_RUN_ERROR << "Supplied user generator doesn't support skeleton"
+                              << std::endl;
+        }
+
+        else{
+
+            Data->usergenerator.RegisterUserCallbacks(User_NewUser,
                                                   User_LostUser,
                                                   this->Data,
                                                   hUserCallbacks);
 
-        Data->usergenerator.GetSkeletonCap().RegisterCalibrationCallbacks(UserCalibration_CalibrationStart,
+            Data->usergenerator.GetSkeletonCap().RegisterCalibrationCallbacks(UserCalibration_CalibrationStart,
                                                                           UserCalibration_CalibrationEnd,
                                                                           this->Data,
                                                                           hCalibrationCallbacks);
 
-        if (Data->usergenerator.GetSkeletonCap().NeedPoseForCalibration()) {
-            Data->needPose = TRUE;
+            if (Data->usergenerator.GetSkeletonCap().NeedPoseForCalibration()) {
+                Data->needPose = TRUE;
 
-            if (!Data->usergenerator.IsCapabilitySupported(XN_CAPABILITY_POSE_DETECTION)) {
-                CMN_LOG_RUN_ERROR << "Pose required, but not supported" << std::endl;
-            }
+                if (!Data->usergenerator.IsCapabilitySupported(XN_CAPABILITY_POSE_DETECTION)) {
+                    CMN_LOG_RUN_ERROR << "Pose required, but not supported" << std::endl;
+                }
 
-            Data->usergenerator.GetPoseDetectionCap().RegisterToPoseCallbacks(UserPose_PoseDetected,
+                Data->usergenerator.GetPoseDetectionCap().RegisterToPoseCallbacks(UserPose_PoseDetected,
                                                                               NULL,
                                                                               this->Data,
                                                                               hPoseCallbacks);
-            Data->usergenerator.GetSkeletonCap().GetCalibrationPose(Data->strPose);
-        }
+                Data->usergenerator.GetSkeletonCap().GetCalibrationPose(Data->strPose);
+            }
 
-        Data->usergenerator.GetSkeletonCap().SetSkeletonProfile(XN_SKEL_PROFILE_ALL);
+            Data->usergenerator.GetSkeletonCap().SetSkeletonProfile(XN_SKEL_PROFILE_ALL);
+
+        }
 
     }
 
