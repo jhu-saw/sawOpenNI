@@ -80,11 +80,9 @@ void osaOpenNI::Configure (const std::string & fname)
     // Errors
     xn::EnumerationErrors errors;
 
-    // Xn Node for the script file
-    xn::ScriptNode script_node;
 
     // Init
-    XnStatus status = Data->context.InitFromXmlFile (this->name.c_str(), script_node, &errors);
+    XnStatus status = Data->context.InitFromXmlFile (this->name.data(), &errors); 
 
     if (status == XN_STATUS_NO_NODE_PRESENT) {
         XnChar strError[1024];
