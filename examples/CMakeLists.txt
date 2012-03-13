@@ -25,7 +25,7 @@ if (cisst_FOUND)
   # load cisst configuration
   include (${CISST_USE_FILE})
 
-  cisst_find_component (sawOpenNI REQUIRED)
+  cisst_find_saw_component (sawOpenNI REQUIRED)
 
   if (sawOpenNI_FOUND)
 
