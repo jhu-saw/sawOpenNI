@@ -105,6 +105,15 @@ protected:
                                  VisualizedImage,
                                  PlaneDistances,
                                  PlaneObjects);
+
+            // Use these methods to retrieve detected planes:
+            //
+            //   void GetPlaneIDs(vctDynamicVector<unsigned int> & id_vector) const;
+            //   void GetPlaneIDMap(svlSampleImageMono32 & id_map) const;
+            //   const oniPlane& GetPlane(unsigned int plane_id) const;
+            //   int GetPlaneCopy(oniPlane & plane, unsigned int plane_id) const;
+            //
+
             Segmentation.GetUVHistogram(UVHistogram);
 
             // Push samples to async outputs
@@ -213,22 +222,25 @@ int main()
             if ((keycounter % 20) == 0) {
                 std::cerr << std::endl << "------------------------------------------" << std::endl;
                 std::cerr << "GradientRadius [pixels]     = " << segmentation.Segmentation.GetGradientRadius() << std::endl;
-                std::cerr << "GradientHistogramThreshold  = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
+                std::cerr << "PeakRadius [pixels]         = " << (int)segmentation.Segmentation.GetPeakRadius() << std::endl;
                 std::cerr << "PlaneDistanceThreshold [mm] = " << segmentation.Segmentation.GetPlaneDistanceThreshold() << std::endl;
                 std::cerr << "ColorMatchWeight            = " << std::fixed << std::setprecision(2) << segmentation.Segmentation.GetColorMatchWeight() << std::endl;
                 std::cerr << "MinObjectArea [pixels]      = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                std::cerr << "MergeThreshold              = " << segmentation.Segmentation.GetMergeThreshold() << std::endl << std::endl;
                 std::cerr << "PlaneID                     = " << segmentation.Segmentation.GetPlaneID() << std::endl << std::endl;
                 std::cerr << "Keyboard commands in command window:" << std::endl;
                 std::cerr << "  '1'   - GradientRadius --" << std::endl;
                 std::cerr << "  '2'   - GradientRadius ++" << std::endl;
-                std::cerr << "  '3'   - GradientHistogramThreshold --" << std::endl;
-                std::cerr << "  '4'   - GradientHistogramThreshold ++" << std::endl;
+                std::cerr << "  '3'   - PeakRadius --" << std::endl;
+                std::cerr << "  '4'   - PeakRadius ++" << std::endl;
                 std::cerr << "  '5'   - PlaneDistanceThreshold --" << std::endl;
                 std::cerr << "  '6'   - PlaneDistanceThreshold ++" << std::endl;
                 std::cerr << "  '7'   - ColorMatchWeight --" << std::endl;
                 std::cerr << "  '8'   - ColorMatchWeight ++" << std::endl;
                 std::cerr << "  '9'   - MinObjectArea --" << std::endl;
                 std::cerr << "  '0'   - MinObjectArea ++" << std::endl;
+                std::cerr << "  '-'   - MergeThreshold --" << std::endl;
+                std::cerr << "  '='   - MergeThreshold ++" << std::endl;
                 std::cerr << "  SPACE - Switch to next plane" << std::endl;
                 std::cerr << "  'q'   - Quit" << std::endl;
                 std::cerr << "------------------------------------------" << std::endl << std::endl;
@@ -248,13 +260,13 @@ int main()
                 break;
 
                 case '3':
-                    segmentation.Segmentation.SetGradientHistogramThreshold(segmentation.Segmentation.GetGradientHistogramThreshold() - 1);
-                    std::cerr << "  GradientHistogramThreshold = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
+                    segmentation.Segmentation.SetPeakRadius(segmentation.Segmentation.GetPeakRadius() - 1);
+                    std::cerr << "  PeakRadius [pixels] = " << (int)segmentation.Segmentation.GetPeakRadius() << std::endl;
                 break;
 
                 case '4':
-                    segmentation.Segmentation.SetGradientHistogramThreshold(segmentation.Segmentation.GetGradientHistogramThreshold() + 1);
-                    std::cerr << "  GradientHistogramThreshold = " << (int)segmentation.Segmentation.GetGradientHistogramThreshold() << std::endl;
+                    segmentation.Segmentation.SetPeakRadius(segmentation.Segmentation.GetPeakRadius() + 1);
+                    std::cerr << "  PeakRadius [pixels] = " << (int)segmentation.Segmentation.GetPeakRadius() << std::endl;
                 break;
 
                 case '5':
@@ -278,13 +290,23 @@ int main()
                 break;
 
                 case '9':
-                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() - 1);
+                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() - 100);
                     std::cerr << "  MinObjectArea [pixels] = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
                 break;
 
                 case '0':
-                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() + 1);
+                    segmentation.Segmentation.SetMinObjectArea(segmentation.Segmentation.GetMinObjectArea() + 100);
                     std::cerr << "  MinObjectArea [pixels] = " << segmentation.Segmentation.GetMinObjectArea() << std::endl;
+                break;
+
+                case '-':
+                    segmentation.Segmentation.SetMergeThreshold(segmentation.Segmentation.GetMergeThreshold() - 0.01f);
+                    std::cerr << "  MergeThreshold = " << segmentation.Segmentation.GetMergeThreshold() << std::endl;
+                break;
+
+                case '=':
+                    segmentation.Segmentation.SetMergeThreshold(segmentation.Segmentation.GetMergeThreshold() + 0.01f);
+                    std::cerr << "  MergeThreshold = " << segmentation.Segmentation.GetMergeThreshold() << std::endl;
                 break;
 
                 case ' ':
@@ -302,12 +324,7 @@ int main()
 
     // Safely stopping and deconstructing stream before de-allocation
     stream.Release();
-    kinect.GetOutput("depth")->Disconnect();
-    kinect.GetOutput("pointcloud")->Disconnect();
-    segmentation.GetOutput("visualized")->Disconnect();
-    segmentation.GetOutput("planedistances")->Disconnect();
-    segmentation.GetOutput("planeobjects")->Disconnect();
-    segmentation.GetOutput("uv_histogram")->Disconnect();
+    stream.DisconnectAll();
 
     return 1;
 }

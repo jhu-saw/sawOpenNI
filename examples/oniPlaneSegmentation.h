@@ -34,8 +34,11 @@ public:
     void Allocate(unsigned int width, unsigned int height);
     void Release();
     void CopyOf(const oniPlane & other);
+    void RandomizeColor();
 
     int                   ID;    // unique identifier
+    int                   Label; // label in PlaneLabels array
+    bool                  Used;  // flag that specifies if plane is used or not
     int                   Frame; // ID of video frame where plane was detected most recently
     int                   First; // ID of video frame where plane was first detected
     vctInt2               CoW;   // center of weight
@@ -45,6 +48,10 @@ public:
     svlSampleImageMono16* Dist;  // distance image (pixel value indicates distance from plane)
     svlSampleImageMono32* Hist;  // UV histogram
     vctFloat4             Plane; // 3D plane equation
+    int                   GradX; // average gradient along X
+    int                   GradY; // average gradient along Y
+    unsigned int          Peak;  // gradient peak ID
+    svlRGB                Color;
 };
 
 
@@ -58,14 +65,23 @@ public:
     void SetPlaneDistanceThreshold(double threshold);
     void SetColorMatchWeight(double weight);
     void SetGradientHistogramThreshold(unsigned char threshold);
+    void SetPeakRadius(unsigned int radius);
     void SetMinObjectArea(unsigned int minarea);
     void SetGradientRadius(unsigned int radius);
+    void SetMergeThreshold(float threshold);
     unsigned int  GetPlaneID() const;
     double        GetPlaneDistanceThreshold() const;
     double        GetColorMatchWeight() const;
     unsigned char GetGradientHistogramThreshold() const;
+    unsigned int  GetPeakRadius() const;
     unsigned int  GetMinObjectArea() const;
     unsigned int  GetGradientRadius() const;
+    float         GetMergeThreshold() const;
+
+    void GetPlaneIDs(vctDynamicVector<unsigned int> & id_vector) const;
+    void GetPlaneIDMap(svlSampleImageMono32 & id_map) const;
+    const oniPlane& GetPlane(unsigned int plane_id) const;
+    int GetPlaneCopy(oniPlane & plane, unsigned int plane_id) const;
 
     bool Process(svlSampleImageRGB*    rgb,
                  svlSampleImage3DMap*  pointcloud,
@@ -90,6 +106,11 @@ private:
 
     void ThresholdHistogram(svlSampleImageMono8* image);
 
+    unsigned int FindGradientPeaks(vctDynamicMatrixRef<unsigned int> histogram,
+                                   vctDynamicMatrixRef<unsigned char> peaks,
+                                   svlSampleBlobs* segments,
+                                   const int radius);
+
     void LabelImage(svlSampleBlobs* segments, svlSampleImageMono8* gradlabels);
 
     unsigned int FindLargestSegments(svlSampleImageMono32*       labels,
@@ -98,13 +119,19 @@ private:
 
     void FitPlane(unsigned int planeid, svlSampleImage3DMap* points);
 
+    unsigned int ConsolidatePlanes();
+
+    void CalculateAverageGradientForPlane(unsigned int planeid, int & gradx, int & grady);
+
     void LabelObjects(unsigned int planeid);
 
     void CalculateColorHistogram(unsigned int planeid, svlSampleImageRGB* yuvimage);
 
     void FilterLabels(unsigned int planeid, svlSampleImageRGB* yuvimage);
 
-    void ComputePlaneStats(unsigned int planeid);
+    void ComputePlaneStats(int frameid);
+
+    void ConsolidatePlaneLabels();
 
     void TrackPlanes();
 
@@ -119,8 +146,6 @@ private:
     void CreateColorHistogramImage(svlSampleImageMono32* uvhistogram,
                                    svlSampleImageRGB*    uvhistogramimage);
 
-    svlRGB GetUniqueColorForNumber(unsigned int number);
-
     inline unsigned int sqrt_uint32(unsigned int value);
 
 private:
@@ -134,17 +159,24 @@ private:
     unsigned char GradientHistogramThreshold;
     unsigned int  MinObjectArea;
     unsigned int  GradientRadius;
+    unsigned int  PeakRadius;
     unsigned int  MaxPlaneMatchError;
+    float         MergeThreshold;
+    unsigned int  MaxPlaneCount;
+    unsigned int  MinPlaneArea;
 
     svlSampleBlobs*       Blobs;
-    svlSampleBlobs*       HistogramBlobs;
+    svlSampleBlobs*       GradientPeaks;
     svlSampleImageMono8*  GradientLabels;
     svlSampleImageMono8*  HistogramImage;
+    svlSampleImageMono8*  TempHistogramImage;
     svlSampleImageMono8*  TempMask;
     svlSampleImageMono32* HistogramLabels;
     svlSampleImageMono32* TempHistogram;
     svlSampleImageMono32* TempHistogram2;
     svlSampleImageMono32* BlobLabels;
+    svlSampleImageMono32* PlaneLabels;
+    svlSampleImageMono32* PlaneGradientErrors;
     svlSampleImageMono32* PlaneObjectLabels;
     svlSampleImageRGB*    YUVImage;
     svlSampleImageRGB*    UVHistogramImage;
@@ -157,6 +189,8 @@ private:
     svlImageProcessing::Internals HistogramBlobInternals;
     svlImageProcessing::Internals PlaneBlobInternals;
 
+    unsigned int PeakCount;
+
     // Plane cache used as work buffer
     vctDynamicVector<oniPlane> PlaneCache;
     unsigned int PlaneCacheSize;
@@ -166,6 +200,8 @@ private:
     vctDynamicVector<int> VisiblePlanePositions;
     unsigned int NumberOfVisiblePlanes;
     int PlaneHistoryPosition;
+
+    oniPlane InvalidPlane;
 };
 
 #endif // _oniPlaneSegmentation_H
