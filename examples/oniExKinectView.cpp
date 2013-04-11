@@ -22,10 +22,13 @@ http://www.cisst.org/cisst/license.txt.
 #include <cisstCommon/cmnGetChar.h>
 #include <cisstCommon/cmnPath.h>
 #include <cisstStereoVision.h>
+#include <cisstStereoVision/svlQtObjectFactory.h>
+#include <cisstStereoVision/svlFilterImageWindowQt.h>
+
 #include <sawOpenNI/svlFilterSourceKinect.h>
 
 
-int main()
+int my_main(int argc, char** argv)
 {
     svlInitialize();
 
@@ -70,7 +73,10 @@ int main()
 
     // Safely stopping and deconstructing stream before de-allocation
     stream.Release();
-    kinect.GetOutput("depth")->Disconnect();
+    stream.DisconnectAll();
 
     return 1;
 }
+
+SETUP_QT_ENVIRONMENT(my_main)
+
