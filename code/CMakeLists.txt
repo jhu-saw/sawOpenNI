@@ -51,14 +51,21 @@ if (cisst_FOUND)
     if (CISST_cisstStereoVision)
       set (HEADER_FILES
            ${HEADER_FILES}
+           ${sawOpenNI_HEADER_DIR}/oniPlaneSegmentation.h
+           ${sawOpenNI_HEADER_DIR}/svlFilterSource3DSensorFile.h
            ${sawOpenNI_HEADER_DIR}/svlFilterSourceKinect.h
+           ${sawOpenNI_HEADER_DIR}/svlFilterPlaneSegmentation.h
            )
       set (SOURCE_FILES
            ${SOURCE_FILES}
+           planefit.h
+           oniPlaneSegmentation.cpp
+           svlFilterSource3DSensorFile.cpp
            svlFilterSourceKinect.cpp
+           svlFilterPlaneSegmentation.cpp
            )
     else (CISST_cisstStereoVision)
-      message ("Information: code svlFilterSourceKinect in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled, it requires cisstStereoVision")
+      message ("Information: some files in ${CMAKE_CURRENT_SOURCE_DIR} will not be compiled as they require cisstStereoVision")
     endif (CISST_cisstStereoVision)
 
 
